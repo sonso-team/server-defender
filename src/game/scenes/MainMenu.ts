@@ -7,24 +7,51 @@ export class MainMenu extends Scene
     background: GameObjects.Image;
     logo: GameObjects.Image;
     title: GameObjects.Text;
-    logoTween: Phaser.Tweens.Tween | null;
+    logoTween: Phaser.Tweens.Tween | null = null;
 
     constructor ()
     {
         super('MainMenu');
     }
 
+    private updateLayout (width = this.scale.width, height = this.scale.height)
+    {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const verticalOffset = Math.min(height * 0.12, 84);
+
+        this.background.setPosition(centerX, centerY);
+        this.background.setDisplaySize(width, height);
+
+        if (!this.logoTween)
+        {
+            this.logo.setPosition(centerX, centerY - verticalOffset);
+        }
+
+        this.title.setPosition(centerX, centerY + verticalOffset);
+    }
+
     create ()
     {
-        this.background = this.add.image(512, 384, 'background');
+        const { width, height } = this.scale;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const verticalOffset = Math.min(height * 0.12, 84);
 
-        this.logo = this.add.image(512, 300, 'logo').setDepth(100);
+        this.background = this.add.image(centerX, centerY, 'background');
+        this.background.setDisplaySize(width, height);
 
-        this.title = this.add.text(512, 460, 'Main Menu', {
+        this.logo = this.add.image(centerX, centerY - verticalOffset, 'logo').setDepth(100);
+
+        this.title = this.add.text(centerX, centerY + verticalOffset, 'Main Menu', {
             fontFamily: 'Arial Black', fontSize: 38, color: '#ffffff',
             stroke: '#000000', strokeThickness: 8,
             align: 'center'
         }).setOrigin(0.5).setDepth(100);
+
+        this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
+            this.updateLayout(gameSize.width, gameSize.height);
+        });
 
         EventBus.emit('current-scene-ready', this);
     }
@@ -55,10 +82,14 @@ export class MainMenu extends Scene
         } 
         else
         {
+            const { width, height } = this.scale;
+            const targetX = width * 0.75;
+            const targetY = height * 0.15;
+
             this.logoTween = this.tweens.add({
                 targets: this.logo,
-                x: { value: 750, duration: 3000, ease: 'Back.easeInOut' },
-                y: { value: 80, duration: 1500, ease: 'Sine.easeOut' },
+                x: { value: targetX, duration: 3000, ease: 'Back.easeInOut' },
+                y: { value: targetY, duration: 1500, ease: 'Sine.easeOut' },
                 yoyo: true,
                 repeat: -1,
                 onUpdate: () => {
@@ -72,5 +103,10 @@ export class MainMenu extends Scene
                 }
             });
         }
+    }
+
+    shutdown ()
+    {
+        this.scale.off('resize');
     }
 }
