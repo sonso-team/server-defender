@@ -19,7 +19,7 @@ export class Game extends Scene
     private centerMarker!: Phaser.GameObjects.Graphics;
     private serverSprite!: Phaser.GameObjects.Image;
     private readonly HIT_SCORES: Record<EnemyType, number> = {
-        red: 5, green: 15, blue: 5, orange: 5
+        red: 5, green: 20, blue: 5, orange: 5
     };
     private scoreMultiplier = 1;
     private maxLives = 3;
@@ -133,6 +133,7 @@ export class Game extends Scene
             }
         });
 
+        this.input.addPointer(9); // support up to 10 simultaneous touches
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
         this.input.on(Phaser.Input.Events.POINTER_DOWN, this.handlePointerDown);
         this.scale.on('resize', this.handleResize);

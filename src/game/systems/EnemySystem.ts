@@ -130,8 +130,8 @@ const DIFFICULTY_STAGES: DifficultyStage[] = [
     {   // 0 – 15 s : tutorial, only red
         fromMs: 0,
         maxEnemies: 5,
-        minSpawnIntervalMs: 1800,
-        maxSpawnIntervalMs: 2400,
+        minSpawnIntervalMs: 1200,
+        maxSpawnIntervalMs: 1600,
         minSpeed: 55,
         maxSpeed: 70,
         typeWeights: { red: 1 }
