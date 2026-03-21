@@ -90,11 +90,9 @@ function App()
                                 <div className="intro-modal__content">
                                     <h1 className="intro-modal__title" id="game-intro-title">Как играть</h1>
                                     <div className="intro-modal__description" id="game-intro-description">
-                                        <p><span className='bold'>Ты — последняя линия защиты сервера.</span> Вредоносные DDoS-запросы летят со всех сторон. Твоя задача уничтожать их, пока они не прорвались через файрвол.</p>
-                                        <p><span className='bold'>Нажимай на враждебные запросы, </span> <br /> когда они входят в зону файрвола (пунктирная область вокруг сервера). Тапнул вовремя — запрос уничтожен. Пропустил — сервер получает урон.</p>
-                                        <p>Атака усиливается с каждой секундой. <br /> <span className='bold'>Продержись как можно дольше </span> <br /> и набери максимум очков.</p>
+                                        <p>Уничтожай вредоносные запросы, нажимая на них в зоне файрвола. Пропустил - сервер получает урон.</p>
                                     </div>
-                                    <p className="intro-modal__footer">Удачи, защитник!</p>
+                                    <p className="intro-modal__footer bold">Продержись как можно дольше!</p>
                                 </div>
 
                                 <button className="intro-modal__action" onClick={handleStartGame} type="button">
