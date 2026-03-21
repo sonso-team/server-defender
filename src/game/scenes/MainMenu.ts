@@ -1,13 +1,17 @@
 import { GameObjects, Scene } from 'phaser';
 
 import { EventBus } from '../EventBus';
+import { VaporwaveGridBackground } from '../VaporwaveGridBackground';
 
 export class MainMenu extends Scene
 {
-    background: GameObjects.Image;
+    backgroundEffect!: VaporwaveGridBackground;
     logo: GameObjects.Image;
     title: GameObjects.Text;
     logoTween: Phaser.Tweens.Tween | null = null;
+    private readonly handleResize = (gameSize: Phaser.Structs.Size) => {
+        this.updateLayout(gameSize.width, gameSize.height);
+    };
 
     constructor ()
     {
@@ -20,8 +24,7 @@ export class MainMenu extends Scene
         const centerY = height / 2;
         const verticalOffset = Math.min(height * 0.12, 84);
 
-        this.background.setPosition(centerX, centerY);
-        this.background.setDisplaySize(width, height);
+        this.backgroundEffect.resize(width, height);
 
         if (!this.logoTween)
         {
@@ -38,22 +41,25 @@ export class MainMenu extends Scene
         const centerY = height / 2;
         const verticalOffset = Math.min(height * 0.12, 84);
 
-        this.background = this.add.image(centerX, centerY, 'background');
-        this.background.setDisplaySize(width, height);
+        this.cameras.main.setBackgroundColor(0x0f092b);
+        this.backgroundEffect = new VaporwaveGridBackground(this);
 
-        this.logo = this.add.image(centerX, centerY - verticalOffset, 'logo').setDepth(100);
+        this.logo = this.add.image(centerX, centerY - verticalOffset, 'serveы').setDepth(100);
 
-        this.title = this.add.text(centerX, centerY + verticalOffset, 'Main Menu', {
+        this.title = this.add.text(centerX, centerY + verticalOffset, 'Server Defender', {
             fontFamily: 'Arial Black', fontSize: 38, color: '#ffffff',
             stroke: '#000000', strokeThickness: 8,
             align: 'center'
         }).setOrigin(0.5).setDepth(100);
 
-        this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-            this.updateLayout(gameSize.width, gameSize.height);
-        });
+        this.scale.on('resize', this.handleResize);
 
         EventBus.emit('current-scene-ready', this);
+    }
+
+    update (_time: number, delta: number)
+    {
+        this.backgroundEffect.update(delta);
     }
     
     changeScene ()
@@ -79,7 +85,7 @@ export class MainMenu extends Scene
             {
                 this.logoTween.play();
             }
-        } 
+        }
         else
         {
             const { width, height } = this.scale;
@@ -107,6 +113,7 @@ export class MainMenu extends Scene
 
     shutdown ()
     {
-        this.scale.off('resize');
+        this.scale.off('resize', this.handleResize);
+        this.backgroundEffect.destroy();
     }
 }

@@ -1,11 +1,15 @@
 import { EventBus } from '../EventBus';
+import { VaporwaveGridBackground } from '../VaporwaveGridBackground';
 import { Scene } from 'phaser';
 
 export class Game extends Scene
 {
     camera: Phaser.Cameras.Scene2D.Camera;
-    background: Phaser.GameObjects.Image;
+    backgroundEffect!: VaporwaveGridBackground;
     gameText: Phaser.GameObjects.Text;
+    private readonly handleResize = (gameSize: Phaser.Structs.Size) => {
+        this.updateLayout(gameSize.width, gameSize.height);
+    };
 
     constructor ()
     {
@@ -17,8 +21,7 @@ export class Game extends Scene
         const centerX = width / 2;
         const centerY = height / 2;
 
-        this.background.setPosition(centerX, centerY);
-        this.background.setDisplaySize(width, height);
+        this.backgroundEffect.resize(width, height);
         this.gameText.setPosition(centerX, centerY);
         this.gameText.setWordWrapWidth(Math.max(width - 64, 220), true);
     }
@@ -30,11 +33,9 @@ export class Game extends Scene
         const centerY = height / 2;
 
         this.camera = this.cameras.main;
-        this.camera.setBackgroundColor(0x00ff00);
+        this.camera.setBackgroundColor(0x0f092b);
 
-        this.background = this.add.image(centerX, centerY, 'background');
-        this.background.setDisplaySize(width, height);
-        this.background.setAlpha(0.5);
+        this.backgroundEffect = new VaporwaveGridBackground(this);
 
         this.gameText = this.add.text(centerX, centerY, 'Make something fun!\nand share it with us:\nsupport@phaser.io', {
             fontFamily: 'Arial Black', fontSize: 38, color: '#ffffff',
@@ -43,11 +44,14 @@ export class Game extends Scene
         }).setOrigin(0.5).setDepth(100);
         this.gameText.setWordWrapWidth(Math.max(width - 64, 220), true);
 
-        this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-            this.updateLayout(gameSize.width, gameSize.height);
-        });
+        this.scale.on('resize', this.handleResize);
 
         EventBus.emit('current-scene-ready', this);
+    }
+
+    update (_time: number, delta: number)
+    {
+        this.backgroundEffect.update(delta);
     }
 
     changeScene ()
@@ -57,6 +61,7 @@ export class Game extends Scene
 
     shutdown ()
     {
-        this.scale.off('resize');
+        this.scale.off('resize', this.handleResize);
+        this.backgroundEffect.destroy();
     }
 }

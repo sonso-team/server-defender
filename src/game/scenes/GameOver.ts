@@ -1,11 +1,15 @@
 import { EventBus } from '../EventBus';
+import { VaporwaveGridBackground } from '../VaporwaveGridBackground';
 import { Scene } from 'phaser';
 
 export class GameOver extends Scene
 {
     camera: Phaser.Cameras.Scene2D.Camera;
-    background: Phaser.GameObjects.Image;
-    gameOverText : Phaser.GameObjects.Text;
+    backgroundEffect!: VaporwaveGridBackground;
+    gameOverText: Phaser.GameObjects.Text;
+    private readonly handleResize = (gameSize: Phaser.Structs.Size) => {
+        this.updateLayout(gameSize.width, gameSize.height);
+    };
 
     constructor ()
     {
@@ -17,8 +21,7 @@ export class GameOver extends Scene
         const centerX = width / 2;
         const centerY = height / 2;
 
-        this.background.setPosition(centerX, centerY);
-        this.background.setDisplaySize(width, height);
+        this.backgroundEffect.resize(width, height);
         this.gameOverText.setPosition(centerX, centerY);
         this.gameOverText.setWordWrapWidth(Math.max(width - 64, 220), true);
     }
@@ -29,12 +32,10 @@ export class GameOver extends Scene
         const centerX = width / 2;
         const centerY = height / 2;
 
-        this.camera = this.cameras.main
-        this.camera.setBackgroundColor(0xff0000);
+        this.camera = this.cameras.main;
+        this.camera.setBackgroundColor(0x0f092b);
 
-        this.background = this.add.image(centerX, centerY, 'background');
-        this.background.setDisplaySize(width, height);
-        this.background.setAlpha(0.5);
+        this.backgroundEffect = new VaporwaveGridBackground(this);
 
         this.gameOverText = this.add.text(centerX, centerY, 'Game Over', {
             fontFamily: 'Arial Black', fontSize: 64, color: '#ffffff',
@@ -43,11 +44,14 @@ export class GameOver extends Scene
         }).setOrigin(0.5).setDepth(100);
         this.gameOverText.setWordWrapWidth(Math.max(width - 64, 220), true);
 
-        this.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
-            this.updateLayout(gameSize.width, gameSize.height);
-        });
+        this.scale.on('resize', this.handleResize);
         
         EventBus.emit('current-scene-ready', this);
+    }
+
+    update (_time: number, delta: number)
+    {
+        this.backgroundEffect.update(delta);
     }
 
     changeScene ()
@@ -57,6 +61,7 @@ export class GameOver extends Scene
 
     shutdown ()
     {
-        this.scale.off('resize');
+        this.scale.off('resize', this.handleResize);
+        this.backgroundEffect.destroy();
     }
 }
