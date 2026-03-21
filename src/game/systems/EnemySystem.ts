@@ -293,15 +293,17 @@ export class EnemySystem
 
     private resolveEnemyDestroyed (enemy: EnemyRuntime)
     {
+        const { x, y } = enemy.sprite;
+
         this.gameState.patchEnemy(enemy.id, {
-            x: enemy.sprite.x,
-            y: enemy.sprite.y,
+            x,
+            y,
             state: 'dead',
             enteredFirewallAtMs: enemy.enteredFirewallAtMs
         });
         this.gameState.removeEnemy(enemy.id);
         this.enemies.delete(enemy.id);
-        enemy.sprite.destroy();
+        this.playEnemyDeathAnimation(enemy);
 
         this.options.onEnemyDestroyed?.(enemy.id);
     }
@@ -367,5 +369,104 @@ export class EnemySystem
     private getEnemyTapRadius (displayWidth: number)
     {
         return Math.max(14, displayWidth * 0.6); //а это хитбоксы врагов
+    }
+
+    private playEnemyDeathAnimation (enemy: EnemyRuntime)
+    {
+        const { sprite } = enemy;
+        const originX = sprite.x;
+        const originY = sprite.y;
+        const baseScaleX = sprite.scaleX;
+        const baseScaleY = sprite.scaleY;
+        const baseDepth = sprite.depth;
+        const burstRadius = Math.max(22, sprite.displayWidth);
+
+        const coreFlash = this.scene.add.circle(originX, originY, 9, 0x5f84ff, 0.72).setDepth(baseDepth + 3);
+        coreFlash.setBlendMode(Phaser.BlendModes.ADD);
+        const shockRing = this.scene.add.circle(originX, originY, 6).setDepth(baseDepth + 2);
+        shockRing.setStrokeStyle(3, 0x658bff, 0.95);
+
+        this.scene.tweens.add({
+            targets: shockRing,
+            scaleX: 3.2,
+            scaleY: 3.2,
+            alpha: 0,
+            duration: 288,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+                shockRing.destroy();
+            }
+        });
+
+        this.scene.tweens.add({
+            targets: coreFlash,
+            scaleX: 4.4,
+            scaleY: 4.4,
+            alpha: 0,
+            duration: 234,
+            ease: 'Expo.easeOut',
+            onComplete: () => {
+                coreFlash.destroy();
+            }
+        });
+
+        const bitCount = 15;
+        const bitPalette = ['#5145f1', '#7c33f3', '#6f51f3', '#6d53e4'];
+        for (let i = 0; i < bitCount; i++)
+        {
+            const angle = PhaserMath.FloatBetween(0, Math.PI * 2);
+            const travel = PhaserMath.FloatBetween(burstRadius * 0.45, burstRadius * 1.2);
+            const glyph = PhaserMath.Between(0, 1) === 0 ? '0' : '1';
+            const color = bitPalette[PhaserMath.Between(0, bitPalette.length - 1)];
+            const endX = originX + (Math.cos(angle) * travel * PhaserMath.FloatBetween(0.95, 1.35));
+            const endY = originY + (Math.sin(angle) * travel * PhaserMath.FloatBetween(0.95, 1.35));
+            const bit = this.scene.add.text(
+                originX,
+                originY,
+                glyph,
+                {
+                    fontFamily: 'Montserrat, Arial, sans-serif',
+                    fontSize: `${PhaserMath.Between(14, 24)}px`,
+                    fontStyle: '700',
+                    color
+                }
+            )
+                .setOrigin(0.5)
+                .setDepth(baseDepth + 1)
+                .setRotation(PhaserMath.FloatBetween(-0.35, 0.35))
+                .setAlpha(0.95);
+
+            this.scene.tweens.add({
+                targets: bit,
+                x: endX,
+                y: endY,
+                alpha: 0,
+                scaleX: PhaserMath.FloatBetween(0.52, 0.88),
+                scaleY: PhaserMath.FloatBetween(0.52, 0.88),
+                angle: PhaserMath.Between(-180, 180),
+                duration: PhaserMath.Between(414, 630),
+                ease: 'Cubic.easeOut',
+                onComplete: () => {
+                    bit.destroy();
+                }
+            });
+        }
+
+        sprite.setTintFill(0x9cb5ff);
+
+        this.scene.tweens.add({
+            targets: sprite,
+            y: originY + PhaserMath.Between(34, 58),
+            scaleX: baseScaleX * 1.34,
+            scaleY: baseScaleY * 1.34,
+            alpha: 0,
+            angle: sprite.angle + PhaserMath.Between(-26, 26),
+            duration: 387,
+            ease: 'Sine.easeIn',
+            onComplete: () => {
+                sprite.clearTint();
+                sprite.destroy();
+            }
+        });
     }
 }
