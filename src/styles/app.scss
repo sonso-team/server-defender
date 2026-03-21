@@ -301,7 +301,7 @@ select {
     }
 }
 
-@media (max-height: 760px) {
+@media (max-height: 760px) and (min-width: 769px) {
     .intro-modal-overlay {
         align-items: flex-start;
         padding-block: 10px;
@@ -327,5 +327,16 @@ select {
 
     .intro-modal__action {
         margin-top: 14px;
+    }
+}
+
+@media (max-width: $bp-md) and (max-height: 760px) {
+    .intro-modal-overlay {
+        align-items: center;
+        padding-block: 8px;
+    }
+
+    .intro-modal {
+        max-height: calc(100dvh - 16px);
     }
 }

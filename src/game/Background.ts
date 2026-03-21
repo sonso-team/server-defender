@@ -37,13 +37,33 @@ export class Background
         this.graphics.destroy();
     }
 
+    private getEdgeInset (width: number)
+    {
+        if (width <= 768)
+        {
+            return 0;
+        }
+
+        if (width <= 1024)
+        {
+            return Math.max(width * 0.08, 8);
+        }
+
+        if (width <= 1440)
+        {
+            return Math.max(width * 0.14, 10);
+        }
+
+        return Math.max(width * 0.2, 12);
+    }
+
     private draw ()
     {
         const horizonY = this.height * 0.5;
         const halfWidth = this.width / 2;
         const floorHeight = this.height - horizonY;
         const ceilingHeight = horizonY;
-        const edgeInset = Math.max(this.width * 0.2, 6);
+        const edgeInset = this.getEdgeInset(this.width);
         const laneCount = Math.max(14, Math.floor(this.width / 54));
         const rowCount = Math.max(14, Math.floor(this.height / 46));
         const leftAnchorX = halfWidth - (1);
