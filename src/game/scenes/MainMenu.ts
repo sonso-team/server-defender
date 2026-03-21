@@ -44,7 +44,7 @@ export class MainMenu extends Scene
         this.cameras.main.setBackgroundColor(0x0f092b);
         this.backgroundEffect = new Background(this);
 
-        this.logo = this.add.image(centerX, centerY - verticalOffset, 'serveы').setDepth(100);
+        this.logo = this.add.image(centerX, centerY - verticalOffset, 'server').setDepth(100);
 
         this.title = this.add.text(centerX, centerY + verticalOffset, 'Server Defender', {
             fontFamily: 'Arial Black', fontSize: 38, color: '#ffffff',

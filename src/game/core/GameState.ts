@@ -179,6 +179,16 @@ export class GameState
         return this.createSnapshot();
     }
 
+    getPhase ()
+    {
+        return this.phase;
+    }
+
+    getElapsedMs ()
+    {
+        return this.elapsedMs;
+    }
+
     subscribe (listener: GameStateListener)
     {
         this.listeners.add(listener);

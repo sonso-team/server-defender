@@ -1,0 +1,285 @@
+import { GameObjects, Math as PhaserMath, Scene } from 'phaser';
+import { type EnemyState, GameState } from '../core/GameState';
+
+interface EnemySystemOptions
+{
+    maxEnemies?: number;
+    minSpawnIntervalMs?: number;
+    maxSpawnIntervalMs?: number;
+    minSpeed?: number;
+    maxSpeed?: number;
+    spawnMargin?: number;
+    turnIntervalMinMs?: number;
+    turnIntervalMaxMs?: number;
+    inwardBias?: number;
+    turnResponsiveness?: number;
+    maxDriftFactor?: number;
+    serverHitRadius?: number;
+    enemyWidthDesktopPx?: number;
+    enemyWidthTabletPx?: number;
+    enemyWidthMobilePx?: number;
+    onEnemyReachedServer?: (enemyId: string) => void;
+}
+
+interface EnemyRuntime
+{
+    id: string;
+    sprite: GameObjects.Image;
+    velocity: PhaserMath.Vector2;
+    speed: number;
+    driftFactor: number;
+    turnTimerMs: number;
+    syncTimerMs: number;
+}
+
+const MAX_DELTA_MS = 250;
+const POSITION_SYNC_INTERVAL_MS = 100;
+
+export class EnemySystem
+{
+    private readonly options: Required<Omit<EnemySystemOptions, 'onEnemyReachedServer'>> & Pick<EnemySystemOptions, 'onEnemyReachedServer'>;
+    private readonly enemies = new Map<string, EnemyRuntime>();
+    private width: number;
+    private height: number;
+    private readonly center = new PhaserMath.Vector2();
+    private spawnTimerMs = 0;
+    private enemySeq = 0;
+
+    constructor (
+        private readonly scene: Scene,
+        private readonly gameState: GameState,
+        options: EnemySystemOptions = {}
+    )
+    {
+        this.options = {
+            maxEnemies: options.maxEnemies ?? 10,
+            minSpawnIntervalMs: options.minSpawnIntervalMs ?? 920,
+            maxSpawnIntervalMs: options.maxSpawnIntervalMs ?? 1580,
+            minSpeed: options.minSpeed ?? 76,
+            maxSpeed: options.maxSpeed ?? 98,
+            spawnMargin: options.spawnMargin ?? 84,
+            turnIntervalMinMs: options.turnIntervalMinMs ?? 260,
+            turnIntervalMaxMs: options.turnIntervalMaxMs ?? 1920,
+            inwardBias: options.inwardBias ?? 0.82,
+            turnResponsiveness: options.turnResponsiveness ?? 7.2,
+            maxDriftFactor: options.maxDriftFactor ?? 3.42,
+            serverHitRadius: options.serverHitRadius ?? 56,
+            enemyWidthDesktopPx: options.enemyWidthDesktopPx ?? 58,
+            enemyWidthTabletPx: options.enemyWidthTabletPx ?? 50,
+            enemyWidthMobilePx: options.enemyWidthMobilePx ?? 42,
+            onEnemyReachedServer: options.onEnemyReachedServer
+        };
+
+        this.width = this.scene.scale.width;
+        this.height = this.scene.scale.height;
+        this.center.set(this.width / 2, this.height / 2);
+        this.resetSpawnTimer();
+    }
+
+    resize (width: number, height: number)
+    {
+        this.width = width;
+        this.height = height;
+        this.center.set(width / 2, height / 2);
+    }
+
+    setServerHitRadius (radius: number)
+    {
+        const safeRadius = Number.isFinite(radius) ? Math.max(4, radius) : this.options.serverHitRadius;
+        this.options.serverHitRadius = safeRadius;
+    }
+
+    update (deltaMs: number)
+    {
+        if (this.gameState.getPhase() !== 'running')
+        {
+            return;
+        }
+
+        const safeDeltaMs = Number.isFinite(deltaMs) ? Math.max(0, Math.min(deltaMs, MAX_DELTA_MS)) : 0;
+        if (safeDeltaMs <= 0)
+        {
+            return;
+        }
+
+        this.tickSpawn(safeDeltaMs);
+        this.tickEnemies(safeDeltaMs);
+    }
+
+    destroy ()
+    {
+        for (const enemy of this.enemies.values())
+        {
+            enemy.sprite.destroy();
+        }
+
+        this.enemies.clear();
+        this.gameState.clearEnemies();
+    }
+
+    private tickSpawn (deltaMs: number)
+    {
+        this.spawnTimerMs -= deltaMs;
+        if (this.spawnTimerMs > 0)
+        {
+            return;
+        }
+
+        this.resetSpawnTimer();
+        this.trySpawnEnemy();
+    }
+
+    private resetSpawnTimer ()
+    {
+        this.spawnTimerMs = PhaserMath.Between(this.options.minSpawnIntervalMs, this.options.maxSpawnIntervalMs);
+    }
+
+    private trySpawnEnemy ()
+    {
+        if (this.enemies.size >= this.options.maxEnemies)
+        {
+            return;
+        }
+
+        const id = `enemy-${++this.enemySeq}`;
+        const angle = PhaserMath.FloatBetween(0, Math.PI * 2);
+        const spawnRadius = (Math.hypot(this.width, this.height) * 0.5) + this.options.spawnMargin;
+        const spawnPosition = new PhaserMath.Vector2(
+            this.center.x + (Math.cos(angle) * spawnRadius),
+            this.center.y + (Math.sin(angle) * spawnRadius)
+        );
+
+        const toCenter = new PhaserMath.Vector2(this.center.x - spawnPosition.x, this.center.y - spawnPosition.y).normalize();
+        const driftFactor = PhaserMath.FloatBetween(-this.options.maxDriftFactor, this.options.maxDriftFactor);
+        const direction = this.composeDirection(toCenter, driftFactor);
+        const speed = PhaserMath.FloatBetween(this.options.minSpeed, this.options.maxSpeed);
+
+        const sprite = this.scene.add.image(spawnPosition.x, spawnPosition.y, 'enemy')
+            .setDepth(140);
+        this.applyEnemySize(sprite);
+
+        const runtimeEnemy: EnemyRuntime = {
+            id,
+            sprite,
+            velocity: direction.scale(speed),
+            speed,
+            driftFactor,
+            turnTimerMs: PhaserMath.Between(this.options.turnIntervalMinMs, this.options.turnIntervalMaxMs),
+            syncTimerMs: 0
+        };
+
+        this.enemies.set(id, runtimeEnemy);
+
+        const stateEnemy: EnemyState = {
+            id,
+            x: spawnPosition.x,
+            y: spawnPosition.y,
+            state: 'approaching',
+            spawnedAtMs: this.gameState.getElapsedMs(),
+            enteredFirewallAtMs: null
+        };
+
+        this.gameState.upsertEnemy(stateEnemy);
+    }
+
+    private tickEnemies (deltaMs: number)
+    {
+        const deltaSec = deltaMs / 1000;
+
+        for (const enemy of this.enemies.values())
+        {
+            enemy.turnTimerMs -= deltaMs;
+            if (enemy.turnTimerMs <= 0)
+            {
+                enemy.driftFactor = PhaserMath.FloatBetween(-this.options.maxDriftFactor, this.options.maxDriftFactor);
+                enemy.turnTimerMs = PhaserMath.Between(this.options.turnIntervalMinMs, this.options.turnIntervalMaxMs);
+            }
+
+            const toCenter = new PhaserMath.Vector2(this.center.x - enemy.sprite.x, this.center.y - enemy.sprite.y);
+            const distanceToCenter = toCenter.length();
+            if (distanceToCenter <= this.options.serverHitRadius)
+            {
+                this.resolveEnemyReachedServer(enemy);
+                continue;
+            }
+
+            const toCenterNormalized = distanceToCenter > 0 ? toCenter.scale(1 / distanceToCenter) : new PhaserMath.Vector2(0, 1);
+            const desiredDirection = this.composeDirection(toCenterNormalized, enemy.driftFactor);
+            const currentDirection = enemy.velocity.clone().normalize();
+            const turnLerp = Math.min(1, this.options.turnResponsiveness * deltaSec);
+            const nextDirection = currentDirection.lerp(desiredDirection, turnLerp).normalize();
+
+            enemy.velocity.copy(nextDirection.scale(enemy.speed));
+            enemy.sprite.x += enemy.velocity.x * deltaSec;
+            enemy.sprite.y += enemy.velocity.y * deltaSec;
+
+            enemy.syncTimerMs -= deltaMs;
+            if (enemy.syncTimerMs <= 0)
+            {
+                enemy.syncTimerMs = POSITION_SYNC_INTERVAL_MS;
+                this.gameState.patchEnemy(enemy.id, {
+                    x: enemy.sprite.x,
+                    y: enemy.sprite.y,
+                    state: 'approaching'
+                });
+            }
+        }
+    }
+
+    private resolveEnemyReachedServer (enemy: EnemyRuntime)
+    {
+        this.gameState.patchEnemy(enemy.id, {
+            x: enemy.sprite.x,
+            y: enemy.sprite.y,
+            state: 'hit_server'
+        });
+        this.gameState.removeEnemy(enemy.id);
+        this.enemies.delete(enemy.id);
+        enemy.sprite.destroy();
+
+        this.options.onEnemyReachedServer?.(enemy.id);
+    }
+
+    private composeDirection (toCenter: PhaserMath.Vector2, driftFactor: number)
+    {
+        const perpendicular = new PhaserMath.Vector2(-toCenter.y, toCenter.x);
+        const desired = toCenter.clone().scale(this.options.inwardBias).add(perpendicular.scale(driftFactor));
+
+        if (desired.lengthSq() <= Number.EPSILON)
+        {
+            return toCenter.clone();
+        }
+
+        desired.normalize();
+
+        // Enforce progress to the center: no backward trajectories.
+        if (desired.dot(toCenter) < 0.45)
+        {
+            return toCenter.clone().lerp(desired, 0.2).normalize();
+        }
+
+        return desired;
+    }
+
+    private applyEnemySize (sprite: GameObjects.Image)
+    {
+        const baseWidth = Math.max(1, sprite.width);
+        const targetWidth = this.getTargetEnemyWidth();
+        sprite.setScale(targetWidth / baseWidth);
+    }
+
+    private getTargetEnemyWidth ()
+    {
+        if (this.width <= 480)
+        {
+            return this.options.enemyWidthMobilePx;
+        }
+
+        if (this.width <= 768)
+        {
+            return this.options.enemyWidthTabletPx;
+        }
+
+        return this.options.enemyWidthDesktopPx;
+    }
+}
