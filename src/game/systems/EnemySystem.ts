@@ -28,11 +28,12 @@ interface EnemySystemOptions
 interface EnemyTypeConfig
 {
     textureKey: string;
-    hp: number;
+    hp: number;       // minimum HP (also fixed HP for 1-HP types)
+    hpMax: number;    // maximum HP — randomised at spawn; equals hp for fixed-HP types
     speedMultiplier: number;
-    sizeMultiplier: number;    // relative to base red size
-    spawnWeight: number;       // weights sum to TOTAL_SPAWN_WEIGHT
-    tint: number | null;       // null = no tint (types use own textures)
+    sizeMultiplier: number;       // relative to base red size
+    tapRadiusMultiplier: number;  // hitbox = max(14, displayWidth * this)
+    tint: number | null;          // null = no tint (types use own textures)
     // hitTints[hp - 1] = tint applied after a hit when that many HP remain
     hitTints: number[];
     deathFlashColor: number;
@@ -47,9 +48,10 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
     red: {
         textureKey: 'enemy',
         hp: 1,
+        hpMax: 1,
         speedMultiplier: 1.0,
         sizeMultiplier: 1.0,
-        spawnWeight: 55,
+        tapRadiusMultiplier: 0.65,
         tint: null,
         hitTints: [],
         deathFlashColor: 0x5f84ff,
@@ -62,9 +64,10 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
     green: {
         textureKey: 'little-bro',
         hp: 1,
+        hpMax: 1,
         speedMultiplier: 2.4,
         sizeMultiplier: 0.65,
-        spawnWeight: 10,
+        tapRadiusMultiplier: 1.1,  // bigger hitbox — these little guys are hard to tap
         tint: null,
         hitTints: [],
         deathFlashColor: 0x44ff66,
@@ -77,12 +80,13 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
     blue: {
         textureKey: 'big-bro',
         hp: 3,
+        hpMax: 6,  // randomised per-spawn between hp and hpMax
         speedMultiplier: 0.38,
         sizeMultiplier: 1.35,
-        spawnWeight: 25,
+        tapRadiusMultiplier: 0.65,
         tint: null,
-        // index 0 = 1 hp left (critical), index 1 = 2 hp left (damaged)
-        hitTints: [0xff8899, 0x99ddff],
+        // hitTints: index 0 = 1 HP left (critical red), higher indices = intermediate damage tints
+        hitTints: [0xff4466, 0xff8899, 0xbbddff, 0x99ddff, 0xcceeff],
         deathFlashColor: 0x44aaff,
         deathRingColor: 0x2288ee,
         deathBitPalette: ['#2277ff', '#4499ff', '#66bbff', '#88ccff', '#aaddff'],
@@ -93,9 +97,10 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
     orange: {
         textureKey: 'orange-enemy',
         hp: 1,
+        hpMax: 1,
         speedMultiplier: 1.3,
         sizeMultiplier: 0.9,
-        spawnWeight: 10,
+        tapRadiusMultiplier: 0.65,
         tint: null,
         hitTints: [],
         deathFlashColor: 0xff8800,
@@ -107,8 +112,75 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
     }
 };
 
-const TOTAL_SPAWN_WEIGHT = Object.values(ENEMY_TYPE_CONFIG)
-    .reduce((sum, cfg) => sum + cfg.spawnWeight, 0);
+// ─── Difficulty stages ─────────────────────────────────────────────────────────
+
+interface DifficultyStage
+{
+    fromMs: number;
+    maxEnemies: number;
+    minSpawnIntervalMs: number;
+    maxSpawnIntervalMs: number;
+    minSpeed: number;
+    maxSpeed: number;
+    typeWeights: Partial<Record<EnemyType, number>>;
+}
+
+const DIFFICULTY_STAGES: DifficultyStage[] = [
+    {   // 0 – 30 s  : tutorial pace, only red
+        fromMs: 0,
+        maxEnemies: 5,
+        minSpawnIntervalMs: 1800,
+        maxSpawnIntervalMs: 2400,
+        minSpeed: 55,
+        maxSpeed: 72,
+        typeWeights: { red: 1 }
+    },
+    {   // 30 – 60 s : blue joins, slightly faster
+        fromMs: 30_000,
+        maxEnemies: 6,
+        minSpawnIntervalMs: 1350,
+        maxSpawnIntervalMs: 1900,
+        minSpeed: 60,
+        maxSpeed: 82,
+        typeWeights: { red: 4, blue: 1 }
+    },
+    {   // 60 – 90 s : greens appear
+        fromMs: 60_000,
+        maxEnemies: 7,
+        minSpawnIntervalMs: 1050,
+        maxSpawnIntervalMs: 1500,
+        minSpeed: 68,
+        maxSpeed: 92,
+        typeWeights: { red: 3, blue: 2, green: 1 }
+    },
+    {   // 90 – 120 s : more chaos, even spread
+        fromMs: 90_000,
+        maxEnemies: 8,
+        minSpawnIntervalMs: 780,
+        maxSpawnIntervalMs: 1200,
+        minSpeed: 76,
+        maxSpeed: 105,
+        typeWeights: { red: 2, blue: 2, green: 2 }
+    },
+    {   // 120 – 180 s : splitters join
+        fromMs: 120_000,
+        maxEnemies: 10,
+        minSpawnIntervalMs: 580,
+        maxSpawnIntervalMs: 900,
+        minSpeed: 85,
+        maxSpeed: 118,
+        typeWeights: { red: 3, blue: 2, green: 2, orange: 1 }
+    },
+    {   // 180 s+  : penetration mode 💀
+        fromMs: 180_000,
+        maxEnemies: 13,
+        minSpawnIntervalMs: 350,
+        maxSpawnIntervalMs: 600,
+        minSpeed: 98,
+        maxSpeed: 140,
+        typeWeights: { red: 3, blue: 2, green: 3, orange: 2 }
+    }
+];
 
 // ─── Runtime types ────────────────────────────────────────────────────────────
 
@@ -290,19 +362,43 @@ export class EnemySystem
         this.trySpawnEnemy();
     }
 
+    private getCurrentStage (): DifficultyStage
+    {
+        const elapsed = this.gameState.getElapsedMs();
+        let stage = DIFFICULTY_STAGES[0];
+
+        for (const s of DIFFICULTY_STAGES)
+        {
+            if (elapsed >= s.fromMs)
+            {
+                stage = s;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return stage;
+    }
+
     private resetSpawnTimer ()
     {
-        this.spawnTimerMs = PhaserMath.Between(this.options.minSpawnIntervalMs, this.options.maxSpawnIntervalMs);
+        const stage = this.getCurrentStage();
+        this.spawnTimerMs = PhaserMath.Between(stage.minSpawnIntervalMs, stage.maxSpawnIntervalMs);
     }
 
     private pickEnemyType (): EnemyType
     {
-        const roll = PhaserMath.FloatBetween(0, TOTAL_SPAWN_WEIGHT);
+        const { typeWeights } = this.getCurrentStage();
+        const entries = Object.entries(typeWeights) as [EnemyType, number][];
+        const total = entries.reduce((sum, [, w]) => sum + w, 0);
+        const roll = PhaserMath.FloatBetween(0, total);
         let cumulative = 0;
 
-        for (const [type, cfg] of Object.entries(ENEMY_TYPE_CONFIG) as [EnemyType, EnemyTypeConfig][])
+        for (const [type, weight] of entries)
         {
-            cumulative += cfg.spawnWeight;
+            cumulative += weight;
             if (roll < cumulative)
             {
                 return type;
@@ -314,7 +410,9 @@ export class EnemySystem
 
     private trySpawnEnemy ()
     {
-        if (this.enemies.size >= this.options.maxEnemies)
+        const stage = this.getCurrentStage();
+
+        if (this.enemies.size >= stage.maxEnemies)
         {
             return;
         }
@@ -336,7 +434,8 @@ export class EnemySystem
         ).normalize();
         const driftFactor = PhaserMath.FloatBetween(-this.options.maxDriftFactor, this.options.maxDriftFactor);
         const direction = this.composeDirection(toCenter, driftFactor);
-        const speed = PhaserMath.FloatBetween(this.options.minSpeed, this.options.maxSpeed) * typeCfg.speedMultiplier;
+        const speed = PhaserMath.FloatBetween(stage.minSpeed, stage.maxSpeed) * typeCfg.speedMultiplier;
+        const hp = PhaserMath.Between(typeCfg.hp, typeCfg.hpMax);
 
         const sprite = this.scene.add.image(spawnPosition.x, spawnPosition.y, typeCfg.textureKey).setDepth(140);
         this.applyEnemySize(sprite, type);
@@ -349,8 +448,8 @@ export class EnemySystem
         const runtimeEnemy: EnemyRuntime = {
             id,
             type,
-            hp: typeCfg.hp,
-            maxHp: typeCfg.hp,
+            hp,
+            maxHp: hp,
             sprite,
             velocity: direction.scale(speed),
             speed,
@@ -359,7 +458,7 @@ export class EnemySystem
             syncTimerMs: 0,
             inFirewall: false,
             enteredFirewallAtMs: null,
-            tapRadius: this.getEnemyTapRadius(sprite.displayWidth),
+            tapRadius: this.getEnemyTapRadius(sprite.displayWidth, type),
             frozenUntilMs: 0
         };
 
@@ -527,9 +626,9 @@ export class EnemySystem
         return this.options.enemyWidthDesktopPx;
     }
 
-    private getEnemyTapRadius (displayWidth: number)
+    private getEnemyTapRadius (displayWidth: number, type: EnemyType)
     {
-        return Math.max(14, displayWidth * 0.6); //а это хитбоксы врагов
+        return Math.max(14, displayWidth * ENEMY_TYPE_CONFIG[type].tapRadiusMultiplier);
     }
 
     // ─── Animations ───────────────────────────────────────────────────────────
@@ -800,7 +899,7 @@ export class EnemySystem
             syncTimerMs: 0,
             inFirewall,
             enteredFirewallAtMs: inFirewall ? this.gameState.getElapsedMs() : null,
-            tapRadius: this.getEnemyTapRadius(sprite.displayWidth),
+            tapRadius: this.getEnemyTapRadius(sprite.displayWidth, type),
             frozenUntilMs: freezeMs > 0 ? this.gameState.getElapsedMs() + freezeMs : 0
         };
 
