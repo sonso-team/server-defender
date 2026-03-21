@@ -32,6 +32,11 @@ export class Game extends Scene
 
     private updateLayout (width = this.scale.width, height = this.scale.height)
     {
+        if (!this.backgroundEffect || !this.enemySystem || !this.centerMarker || !this.serverSprite || !this.hudText || !this.livesText)
+        {
+            return;
+        }
+
         const centerX = width / 2;
         const centerY = height / 2;
         const markerRadius = this.getCenterMarkerRadius(width);
@@ -116,6 +121,11 @@ export class Game extends Scene
 
     update (_time: number, delta: number)
     {
+        if (!this.backgroundEffect || !this.gameState || !this.enemySystem)
+        {
+            return;
+        }
+
         this.backgroundEffect.update(delta);
         this.gameState.advanceTime(delta);
         this.enemySystem.update(delta);
@@ -132,13 +142,14 @@ export class Game extends Scene
         this.unsubscribeState = undefined;
         this.scale.off('resize', this.handleResize);
         this.input.off(Phaser.Input.Events.POINTER_DOWN, this.handlePointerDown);
-        this.enemySystem.destroy();
-        this.serverSprite.destroy();
-        this.centerMarker.destroy();
-        this.livesText.destroy();
+        this.enemySystem?.destroy();
+        this.serverSprite?.destroy();
+        this.centerMarker?.destroy();
+        this.livesText?.destroy();
+        this.hudText?.destroy();
         this.isGameOverTransitioning = false;
-        this.gameState.setPhase('paused');
-        this.backgroundEffect.destroy();
+        this.gameState?.setPhase('paused');
+        this.backgroundEffect?.destroy();
     }
 
     private renderHud (snapshot: GameStateSnapshot)

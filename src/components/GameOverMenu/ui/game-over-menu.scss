@@ -1,0 +1,162 @@
+.game-over-screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    pointer-events: auto;
+    z-index: 50;
+    background:
+        radial-gradient(circle at top, rgba(78, 94, 207, 0.28), transparent 44%),
+        linear-gradient(180deg, rgba(11, 20, 61, 0.92) 0%, rgba(9, 17, 54, 0.96) 100%),
+        url('/assets/background/background.png') center / cover no-repeat;
+    
+}
+
+.game-over-screen__content {
+    box-sizing: border-box;
+    width: min(100vw, 420px);
+    height: 100dvh;
+    padding: 34px 20px 16px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;
+}
+
+.game-over-screen__header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.game-over-screen__logo {
+    width: min(100%, 252px);
+    height: auto;
+}
+
+.game-over-screen__title {
+    margin: 48px 0 0;
+    color: #ffffff;
+    font-size: 3rem;
+    line-height: 1.08;
+    text-align: center;
+    font-weight: var(--font-weight-bold);
+}
+
+.game-over-screen__score-card {
+    width: min(100%, 220px);
+    margin: 28px auto 0;
+    padding: 14px 12px 12px;
+    border-radius: 16px;
+    background: rgba(52, 56, 150, 0.84);
+    text-align: center;
+}
+
+.game-over-screen__score-value {
+    display: block;
+    color: #ffffff;
+    font-size: 4rem;
+    line-height: 1;
+    font-weight: var(--font-weight-bold);
+}
+
+.game-over-screen__score-caption {
+    margin: 8px 0 0;
+    color: #edf3ff;
+    font-size: 2rem;
+    line-height: 1.15;
+    font-weight: var(--font-weight-regular);
+}
+
+.game-over-screen__description {
+    margin: 28px 0 0;
+    color: #f3f6ff;
+    font-size: 1.1rem;
+    line-height: 1.24;
+    text-align: center;
+    font-weight: var(--font-weight-regular);
+}
+
+.game-over-screen__restart {
+    width: 100%;
+    margin-top: 28px;
+}
+
+.game-over-screen__bottom {
+    margin-top: auto;
+}
+
+.game-over-screen__bottom-text {
+    margin: 0;
+    color: #eaf0ff;
+    font-size: 1rem;
+    line-height: 1.24;
+    text-align: center;
+    font-weight: var(--font-weight-regular);
+}
+
+.game-over-screen__socials {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+    .game-over-screen__content {
+        width: min(100vw, 400px);
+        padding: 30px 18px 16px;
+    }
+
+    .game-over-screen__title {
+        margin-top: 40px;
+        font-size: 2.5rem;
+    }
+
+    .game-over-screen__score-card {
+        margin-top: 24px;
+    }
+
+    .game-over-screen__description {
+        margin-top: 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .game-over-screen__content {
+        width: 100vw;
+        padding: 36px 18px 16px;
+    }
+
+    .game-over-screen__logo {
+        width: min(100%, 210px);
+    }
+
+    .game-over-screen__title {
+        font-size: 2.2rem;
+        margin-top: 36px;
+    }
+
+    .game-over-screen__score-card {
+        width: min(100%, 190px);
+        padding: 14px 10px 12px;
+        border-radius: 14px;
+    }
+
+    .game-over-screen__score-value {
+        font-size: 3.4rem;
+    }
+
+    .game-over-screen__score-caption {
+        font-size: 1.75rem;
+    }
+
+    .game-over-screen__description {
+        font-size: 1rem;
+    }
+
+    .game-over-screen__bottom-text {
+        font-size: 0.95rem;
+    }
+}

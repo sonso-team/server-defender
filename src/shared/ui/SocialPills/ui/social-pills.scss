@@ -1,0 +1,38 @@
+.social-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #dbe8ff;
+    text-decoration: none;
+    min-height: 32px;
+}
+
+.social-pill__icon {
+    display: block;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+}
+
+.social-pill__text {
+    font-size: 1rem;
+    line-height: 1.08;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    font-weight: var(--font-weight-regular);
+}
+
+@media (max-width: 480px) {
+    .social-pill {
+        gap: 7px;
+    }
+
+    .social-pill__icon {
+        width: 28px;
+        height: 28px;
+    }
+
+    .social-pill__text {
+        font-size: 0.95rem;
+    }
+}
