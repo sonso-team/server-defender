@@ -366,6 +366,6 @@ export class EnemySystem
 
     private getEnemyTapRadius (displayWidth: number)
     {
-        return Math.max(14, displayWidth * 0.5);
+        return Math.max(14, displayWidth * 0.6); //а это хитбоксы врагов
     }
 }

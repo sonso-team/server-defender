@@ -209,14 +209,13 @@ export class Game extends Scene
     {
         const baseWidth = Math.max(1, this.serverSprite.width);
         const markerDiameter = markerRadius * 2;
-        const targetWidth = markerDiameter * 0.45;
+        const targetWidth = markerDiameter * 0.3; //тут меняется размер сервака
 
         this.serverSprite.setScale(targetWidth / baseWidth);
     }
 
     private getServerHitRadius ()
     {
-        // Keep hitbox smaller than half of sprite width so enemy visually overlaps server before impact.
         return Phaser.Math.Clamp(this.serverSprite.displayWidth * 0.38, 18, 72);
     }
 
