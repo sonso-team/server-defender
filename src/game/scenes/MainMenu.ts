@@ -9,10 +9,6 @@ export class MainMenu extends Scene
     logo: GameObjects.Image;
     title: GameObjects.Text;
     logoTween: Phaser.Tweens.Tween | null = null;
-    private hasStartListener = false;
-    private readonly handleStartGame = () => {
-        this.changeScene();
-    };
     private readonly handleResize = (gameSize: Phaser.Structs.Size) => {
         this.updateLayout(gameSize.width, gameSize.height);
     };
@@ -55,12 +51,6 @@ export class MainMenu extends Scene
             stroke: '#000000', strokeThickness: 8,
             align: 'center'
         }).setOrigin(0.5).setDepth(100);
-
-        if (!this.hasStartListener)
-        {
-            EventBus.on('start-game', this.handleStartGame);
-            this.hasStartListener = true;
-        }
 
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
         this.scale.on('resize', this.handleResize);
@@ -125,11 +115,6 @@ export class MainMenu extends Scene
     shutdown ()
     {
         this.scale.off('resize', this.handleResize);
-        if (this.hasStartListener)
-        {
-            EventBus.off('start-game', this.handleStartGame);
-            this.hasStartListener = false;
-        }
         this.backgroundEffect.destroy();
     }
 }

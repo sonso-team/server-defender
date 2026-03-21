@@ -1,13 +1,7 @@
 import { useRef, useState } from 'react';
 import { IRefPhaserGame, PhaserGame } from './PhaserGame';
-import { EventBus } from './game/EventBus';
 import { Layout } from './components/Layout';
 
-const introSections = [
-    'Ты — последняя линия защиты сервера. Вредоносные DDoS-запросы летят со всех сторон. Твоя задача уничтожать их, пока они не прорвались через файрвол.',
-    'Нажимай на враждебные запросы, когда они входят в зону файрвола (пунктирная область вокруг сервера). Тапнул вовремя — запрос уничтожен. Пропустил — сервер получает урон.',
-    'Атака усиливается с каждой секундой. Продержись как можно дольше и набери максимум очков.'
-] as const;
 
 function App()
 {
@@ -19,7 +13,14 @@ function App()
     const handleStartGame = () =>
     {
         setIsIntroOpen(false);
-        EventBus.emit('start-game');
+
+        const game = phaserRef.current?.game;
+        if (!game)
+        {
+            return;
+        }
+
+        game.scene.start('Game');
     };
 
     return (
