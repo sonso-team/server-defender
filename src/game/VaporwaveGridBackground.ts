@@ -46,9 +46,8 @@ export class VaporwaveGridBackground
         const edgeInset = Math.max(this.width * 0.025, 6);
         const laneCount = Math.max(14, Math.floor(this.width / 54));
         const rowCount = Math.max(14, Math.floor(this.height / 46));
-        const centerGap = Math.max(this.width * 0.06, 20);
-        const leftAnchorX = halfWidth - (centerGap / 2);
-        const rightAnchorX = halfWidth + (centerGap / 2);
+        const leftAnchorX = halfWidth - (1);
+        const rightAnchorX = halfWidth + 1;
         const leftSpan = leftAnchorX - edgeInset;
         const rightSpan = (this.width - edgeInset) - rightAnchorX;
 
@@ -59,6 +58,9 @@ export class VaporwaveGridBackground
         this.graphics.fillStyle(this.glowColor, 0.14);
         this.graphics.fillRect(0, horizonY - (this.height * 0.018), this.width, this.height * 0.036);
 
+        this.graphics.lineStyle(1.3, this.gridColor, 0.4);
+        this.graphics.lineBetween(halfWidth, 0, halfWidth, this.height);
+
         this.drawPerspectiveFan(leftAnchorX, leftSpan, laneCount);
         this.drawPerspectiveFan(rightAnchorX, rightSpan, laneCount, true);
         this.drawRows(leftAnchorX, rightAnchorX, leftSpan, rightSpan, rowCount, floorHeight, ceilingHeight, horizonY);
@@ -66,7 +68,7 @@ export class VaporwaveGridBackground
 
     private drawPerspectiveFan (anchorX: number, span: number, laneCount: number, mirror = false)
     {
-        for (let i = 0; i <= laneCount; i++)
+        for (let i = 1; i <= laneCount; i++)
         {
             const normalized = i / laneCount;
             const x = mirror
