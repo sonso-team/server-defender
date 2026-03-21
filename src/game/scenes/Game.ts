@@ -27,13 +27,13 @@ export class Game extends Scene
     {
         const centerX = width / 2;
         const centerY = height / 2;
-        const markerRadius = this.getCenterMarkerRadius(width, height);
+        const markerRadius = this.getCenterMarkerRadius(width);
 
         this.backgroundEffect.resize(width, height);
         this.enemySystem.resize(width, height);
         this.drawCenterMarker(centerX, centerY, markerRadius);
         this.serverSprite.setPosition(centerX, centerY);
-        this.applyServerSpriteScale(width);
+        this.applyServerSpriteScale(markerRadius);
         this.hudText.setPosition(centerX, 28);
         this.hudText.setWordWrapWidth(Math.max(width - 48, 240), true);
     }
@@ -41,9 +41,8 @@ export class Game extends Scene
     create ()
     {
         const { width } = this.scale;
-        const { height } = this.scale;
         const centerX = width / 2;
-        const markerRadius = this.getCenterMarkerRadius(width, height);
+        const markerRadius = this.getCenterMarkerRadius(width);
 
         this.camera = this.cameras.main;
         this.camera.setBackgroundColor(0x0f092b);
@@ -54,7 +53,7 @@ export class Game extends Scene
         this.centerMarker = this.add.graphics().setDepth(130);
         this.drawCenterMarker(centerX, this.scale.height / 2, markerRadius);
         this.serverSprite = this.add.image(centerX, this.scale.height / 2, 'server').setDepth(160);
-        this.applyServerSpriteScale(width);
+        this.applyServerSpriteScale(markerRadius);
 
         this.hudText = this.add.text(centerX, 28, '', {
             fontFamily: 'Montserrat, Arial, sans-serif',
@@ -142,45 +141,31 @@ export class Game extends Scene
         }
     }
 
-    private getCenterMarkerRadius (viewportWidth: number, viewportHeight: number)
+    private getCenterMarkerRadius (viewportWidth: number)
     {
-        const shortSide = Math.min(viewportWidth, viewportHeight);
+        const mobileBreakpoint = 768;
+        const desktopBreakpoint = 1280;
+        const mobileDiameterRatio = 0.5;
+        const desktopDiameterRatio = 0.2;
+        const minDiameter = 40;
 
-        if (viewportWidth <= 480)
-        {
-            return Math.round(shortSide * 0.34);
-        }
+        const interpolation = Phaser.Math.Clamp(
+            (viewportWidth - mobileBreakpoint) / (desktopBreakpoint - mobileBreakpoint),
+            0,
+            1
+        );
+        const diameterRatio = Phaser.Math.Linear(mobileDiameterRatio, desktopDiameterRatio, interpolation);
+        const diameter = Math.max(minDiameter, viewportWidth * diameterRatio);
 
-        if (viewportWidth <= 768)
-        {
-            return Math.round(shortSide * 0.33);
-        }
-
-        if (viewportWidth <= 1024)
-        {
-            return Math.round(shortSide * 0.31);
-        }
-
-        return Phaser.Math.Clamp(Math.round(shortSide * 0.3), 50, 80);
+        // Circle: same visual size for width/height, diameter is percentage of viewport width.
+        return Math.round(diameter / 2);
     }
 
-    private applyServerSpriteScale (viewportWidth: number)
+    private applyServerSpriteScale (markerRadius: number)
     {
         const baseWidth = Math.max(1, this.serverSprite.width);
-
-        let targetWidth = 114;
-        if (viewportWidth <= 480)
-        {
-            targetWidth = 74;
-        }
-        else if (viewportWidth <= 768)
-        {
-            targetWidth = 88;
-        }
-        else if (viewportWidth <= 1024)
-        {
-            targetWidth = 100;
-        }
+        const markerDiameter = markerRadius * 2;
+        const targetWidth = markerDiameter * 0.7;
 
         this.serverSprite.setScale(targetWidth / baseWidth);
     }
