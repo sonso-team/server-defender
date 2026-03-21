@@ -34,6 +34,7 @@ export class Game extends Scene
         this.drawCenterMarker(centerX, centerY, markerRadius);
         this.serverSprite.setPosition(centerX, centerY);
         this.applyServerSpriteScale(markerRadius);
+        this.enemySystem.setServerHitRadius(this.getServerHitRadius());
         this.hudText.setPosition(centerX, 28);
         this.hudText.setWordWrapWidth(Math.max(width - 48, 240), true);
     }
@@ -70,8 +71,9 @@ export class Game extends Scene
             this.renderHud(snapshot);
         });
 
+        const serverHitRadius = this.getServerHitRadius();
         this.enemySystem = new EnemySystem(this, this.gameState, {
-            serverHitRadius: 56,
+            serverHitRadius,
             onEnemyReachedServer: () => {
                 const livesLeft = this.gameState.damageServer(1);
                 if (livesLeft <= 0)
@@ -167,5 +169,11 @@ export class Game extends Scene
         const targetWidth = markerDiameter * 0.45;
 
         this.serverSprite.setScale(targetWidth / baseWidth);
+    }
+
+    private getServerHitRadius ()
+    {
+        // Keep hitbox smaller than half of sprite width so enemy visually overlaps server before impact.
+        return Phaser.Math.Clamp(this.serverSprite.displayWidth * 0.38, 18, 72);
     }
 }
