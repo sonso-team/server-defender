@@ -1,7 +1,7 @@
 import { EventBus } from '../EventBus';
 import { Background } from '../Background';
 import { Scene } from 'phaser';
-import { GameState, type GameStateSnapshot } from '../core/GameState';
+import { GameState, type GameStateSnapshot, type EnemyType } from '../core/GameState';
 import { EnemySystem } from '../systems/EnemySystem';
 
 export class Game extends Scene
@@ -18,7 +18,10 @@ export class Game extends Scene
     private unsubscribeState?: () => void;
     private centerMarker!: Phaser.GameObjects.Graphics;
     private serverSprite!: Phaser.GameObjects.Image;
-    private readonly killScore = 5;
+    private readonly HIT_SCORES: Record<EnemyType, number> = {
+        red: 5, green: 15, blue: 5, orange: 5
+    };
+    private scoreMultiplier = 1;
     private maxLives = 3;
     private isGameOverTransitioning = false;
     private readonly handlePointerDown = (pointer: Phaser.Input.Pointer) => {
@@ -118,8 +121,8 @@ export class Game extends Scene
         this.enemySystem = new EnemySystem(this, this.gameState, {
             firewallRadius: markerRadius,
             serverHitRadius,
-            onEnemyDestroyed: () => {
-                this.gameState.addScore(this.killScore);
+            onEnemyHit: (type) => {
+                this.gameState.addScore(this.HIT_SCORES[type] * this.scoreMultiplier);
             },
             onEnemyReachedServer: () => {
                 const livesLeft = this.gameState.damageServer(1);
@@ -147,6 +150,54 @@ export class Game extends Scene
         this.backgroundEffect.update(delta);
         this.gameState.advanceTime(delta);
         this.enemySystem.update(delta);
+        this.tickMultiplier();
+    }
+
+    private tickMultiplier ()
+    {
+        const elapsed = this.gameState.getElapsedMs();
+        const next = elapsed >= 180_000 ? 4 : elapsed >= 120_000 ? 3 : elapsed >= 60_000 ? 2 : 1;
+
+        if (next !== this.scoreMultiplier)
+        {
+            this.scoreMultiplier = next;
+            this.showMultiplierPopup(next);
+        }
+    }
+
+    private showMultiplierPopup (multiplier: number)
+    {
+        const { width, height } = this.scale;
+        const color = multiplier >= 3 ? '#ff4422' : '#ffdd00';
+
+        const label = this.add.text(width / 2, height / 2 - 70, `×${multiplier} МНОЖИТЕЛЬ!`, {
+            fontFamily: 'Montserrat, Arial, sans-serif',
+            fontSize: '34px',
+            fontStyle: '800',
+            color,
+            stroke: '#000000',
+            strokeThickness: 5
+        }).setOrigin(0.5).setDepth(400).setAlpha(0);
+
+        this.tweens.add({
+            targets: label,
+            alpha: 1,
+            y: height / 2 - 100,
+            duration: 280,
+            ease: 'Cubic.easeOut',
+            onComplete: () =>
+            {
+                this.tweens.add({
+                    targets: label,
+                    alpha: 0,
+                    y: height / 2 - 135,
+                    delay: 1400,
+                    duration: 500,
+                    ease: 'Cubic.easeIn',
+                    onComplete: () => { label.destroy(); }
+                });
+            }
+        });
     }
 
     changeScene ()

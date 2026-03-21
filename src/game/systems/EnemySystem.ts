@@ -19,6 +19,7 @@ interface EnemySystemOptions
     enemyWidthDesktopPx?: number;
     enemyWidthTabletPx?: number;
     enemyWidthMobilePx?: number;
+    onEnemyHit?: (type: EnemyType) => void;
     onEnemyDestroyed?: (enemyId: string) => void;
     onEnemyReachedServer?: (enemyId: string) => void;
 }
@@ -49,7 +50,7 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         textureKey: 'enemy',
         hp: 1,
         hpMax: 1,
-        speedMultiplier: 1.0,
+        speedMultiplier: 1.2,
         sizeMultiplier: 1.0,
         tapRadiusMultiplier: 0.65,
         tint: null,
@@ -67,7 +68,7 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         hpMax: 1,
         speedMultiplier: 2.4,
         sizeMultiplier: 0.65,
-        tapRadiusMultiplier: 1.1,  // bigger hitbox — these little guys are hard to tap
+        tapRadiusMultiplier: 1.3,  // bigger hitbox — these little guys are hard to tap
         tint: null,
         hitTints: [],
         deathFlashColor: 0x44ff66,
@@ -81,7 +82,7 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         textureKey: 'big-bro',
         hp: 3,
         hpMax: 6,  // randomised per-spawn between hp and hpMax
-        speedMultiplier: 0.38,
+        speedMultiplier: 0.456,
         sizeMultiplier: 1.35,
         tapRadiusMultiplier: 0.65,
         tint: null,
@@ -126,58 +127,58 @@ interface DifficultyStage
 }
 
 const DIFFICULTY_STAGES: DifficultyStage[] = [
-    {   // 0 – 30 s  : tutorial pace, only red
+    {   // 0 – 15 s : tutorial, only red
         fromMs: 0,
         maxEnemies: 5,
         minSpawnIntervalMs: 1800,
         maxSpawnIntervalMs: 2400,
         minSpeed: 55,
-        maxSpeed: 72,
+        maxSpeed: 70,
         typeWeights: { red: 1 }
     },
-    {   // 30 – 60 s : blue joins, slightly faster
-        fromMs: 30_000,
+    {   // 15 – 40 s : blue joins
+        fromMs: 15_000,
         maxEnemies: 6,
-        minSpawnIntervalMs: 1350,
+        minSpawnIntervalMs: 1400,
         maxSpawnIntervalMs: 1900,
         minSpeed: 60,
-        maxSpeed: 82,
+        maxSpeed: 80,
         typeWeights: { red: 4, blue: 1 }
     },
-    {   // 60 – 90 s : greens appear
-        fromMs: 60_000,
+    {   // 40 – 80 s : greens join
+        fromMs: 40_000,
         maxEnemies: 7,
-        minSpawnIntervalMs: 1050,
-        maxSpawnIntervalMs: 1500,
+        minSpawnIntervalMs: 1100,
+        maxSpawnIntervalMs: 1550,
         minSpeed: 68,
-        maxSpeed: 92,
+        maxSpeed: 90,
         typeWeights: { red: 3, blue: 2, green: 1 }
     },
-    {   // 90 – 120 s : more chaos, even spread
-        fromMs: 90_000,
+    {   // 80 – 120 s : splitters join (×2 mult kicks in at 90 s)
+        fromMs: 80_000,
         maxEnemies: 8,
-        minSpawnIntervalMs: 780,
-        maxSpawnIntervalMs: 1200,
-        minSpeed: 76,
-        maxSpeed: 105,
-        typeWeights: { red: 2, blue: 2, green: 2 }
-    },
-    {   // 120 – 180 s : splitters join
-        fromMs: 120_000,
-        maxEnemies: 10,
-        minSpawnIntervalMs: 580,
-        maxSpawnIntervalMs: 900,
-        minSpeed: 85,
-        maxSpeed: 118,
+        minSpawnIntervalMs: 850,
+        maxSpawnIntervalMs: 1250,
+        minSpeed: 75,
+        maxSpeed: 102,
         typeWeights: { red: 3, blue: 2, green: 2, orange: 1 }
     },
-    {   // 180 s+  : penetration mode 💀
+    {   // 120 – 180 s : ramping hard
+        fromMs: 120_000,
+        maxEnemies: 10,
+        minSpawnIntervalMs: 600,
+        maxSpawnIntervalMs: 920,
+        minSpeed: 84,
+        maxSpeed: 116,
+        typeWeights: { red: 3, blue: 2, green: 2, orange: 1 }
+    },
+    {   // 180 s+ : penetration mode (×3 mult kicks in at 150 s)
         fromMs: 180_000,
         maxEnemies: 13,
         minSpawnIntervalMs: 350,
         maxSpawnIntervalMs: 600,
-        minSpeed: 98,
-        maxSpeed: 140,
+        minSpeed: 96,
+        maxSpeed: 138,
         typeWeights: { red: 3, blue: 2, green: 3, orange: 2 }
     }
 ];
@@ -210,8 +211,8 @@ const POSITION_SYNC_INTERVAL_MS = 100;
 export class EnemySystem
 {
     private readonly options:
-        Required<Omit<EnemySystemOptions, 'onEnemyDestroyed' | 'onEnemyReachedServer'>>
-        & Pick<EnemySystemOptions, 'onEnemyDestroyed' | 'onEnemyReachedServer'>;
+        Required<Omit<EnemySystemOptions, 'onEnemyHit' | 'onEnemyDestroyed' | 'onEnemyReachedServer'>>
+        & Pick<EnemySystemOptions, 'onEnemyHit' | 'onEnemyDestroyed' | 'onEnemyReachedServer'>;
     private readonly enemies = new Map<string, EnemyRuntime>();
     private width: number;
     private height: number;
@@ -242,7 +243,8 @@ export class EnemySystem
             enemyWidthDesktopPx: options.enemyWidthDesktopPx ?? 58,
             enemyWidthTabletPx:  options.enemyWidthTabletPx  ?? 50,
             enemyWidthMobilePx:  options.enemyWidthMobilePx  ?? 42,
-            onEnemyDestroyed:    options.onEnemyDestroyed,
+            onEnemyHit:           options.onEnemyHit,
+            onEnemyDestroyed:     options.onEnemyDestroyed,
             onEnemyReachedServer: options.onEnemyReachedServer
         };
 
@@ -307,6 +309,7 @@ export class EnemySystem
         }
 
         selectedEnemy.hp -= 1;
+        this.options.onEnemyHit?.(selectedEnemy.type);
 
         if (selectedEnemy.hp <= 0)
         {
@@ -360,6 +363,15 @@ export class EnemySystem
 
         this.resetSpawnTimer();
         this.trySpawnEnemy();
+    }
+
+    private getGlobalSpeedMultiplier (): number
+    {
+        const elapsed = this.gameState.getElapsedMs();
+        if (elapsed >= 180_000) return 3;
+        if (elapsed >= 120_000) return 2;
+        if (elapsed >= 60_000)  return 1.5;
+        return 1;
     }
 
     private getCurrentStage (): DifficultyStage
@@ -524,7 +536,7 @@ export class EnemySystem
             const turnLerp = Math.min(1, this.options.turnResponsiveness * deltaSec);
             const nextDirection = currentDirection.lerp(desiredDirection, turnLerp).normalize();
 
-            enemy.velocity.copy(nextDirection.scale(enemy.speed));
+            enemy.velocity.copy(nextDirection.scale(enemy.speed * this.getGlobalSpeedMultiplier()));
             enemy.sprite.x += enemy.velocity.x * deltaSec;
             enemy.sprite.y += enemy.velocity.y * deltaSec;
 
