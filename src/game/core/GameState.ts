@@ -2,9 +2,12 @@ export type GamePhase = 'menu' | 'running' | 'paused' | 'gameover';
 
 export type EnemyStatus = 'spawned' | 'approaching' | 'in_firewall' | 'hit_server' | 'dead';
 
+export type EnemyType = 'red' | 'green' | 'blue' | 'orange';
+
 export interface EnemyState
 {
     id: string;
+    type: EnemyType;
     x: number;
     y: number;
     state: EnemyStatus;

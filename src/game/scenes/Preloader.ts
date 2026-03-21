@@ -66,8 +66,11 @@ export class Preloader extends Scene
         this.load.image('server', 'characters/server-chan.png');
         this.load.image('enemy', 'characters/virus-kun.png');
         this.load.image('dragon', 'characters/virus-kun.png');
-        this.load.svg('heart', 'heart.svg', { width: 64, height: 64 });
-        this.load.svg('heart-broken', 'heart-broken.svg', { width: 64, height: 64 });
+        this.load.svg('little-bro',    'characters/little-bro.svg', { width: 128, height: 128 });
+        this.load.svg('big-bro',       'characters/big-bro.svg',    { width: 128, height: 128 });
+        this.load.svg('orange-enemy',  'characters/orange.svg',     { width: 128, height: 128 });
+        this.load.svg('heart',         'heart.svg',                 { width: 64,  height: 64  });
+        this.load.svg('heart-broken',  'heart-broken.svg',          { width: 64,  height: 64  });
     }
 
     create ()

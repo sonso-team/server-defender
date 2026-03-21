@@ -210,8 +210,8 @@ export class Game extends Scene
     {
         const mobileBreakpoint = 768;
         const desktopBreakpoint = 1280;
-        const mobileDiameterRatio = 0.5;
-        const desktopDiameterRatio = 0.2;
+        const mobileDiameterRatio = 0.75;
+        const desktopDiameterRatio = 0.253;
         const minDiameter = 40;
 
         const interpolation = Phaser.Math.Clamp(

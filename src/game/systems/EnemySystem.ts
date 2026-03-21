@@ -1,5 +1,5 @@
 import { GameObjects, Math as PhaserMath, Scene } from 'phaser';
-import { type EnemyState, GameState } from '../core/GameState';
+import { type EnemyState, type EnemyType, GameState } from '../core/GameState';
 
 interface EnemySystemOptions
 {
@@ -23,9 +23,101 @@ interface EnemySystemOptions
     onEnemyReachedServer?: (enemyId: string) => void;
 }
 
+// ─── Per-type configuration ───────────────────────────────────────────────────
+
+interface EnemyTypeConfig
+{
+    textureKey: string;
+    hp: number;
+    speedMultiplier: number;
+    sizeMultiplier: number;    // relative to base red size
+    spawnWeight: number;       // weights sum to TOTAL_SPAWN_WEIGHT
+    tint: number | null;       // null = no tint (types use own textures)
+    // hitTints[hp - 1] = tint applied after a hit when that many HP remain
+    hitTints: number[];
+    deathFlashColor: number;
+    deathRingColor: number;
+    deathBitPalette: string[];
+    deathBurstScale: number;   // explosion size multiplier
+    deathDuration: number;     // animation duration multiplier
+    deathSpriteColor: number;  // tintFill applied to sprite on death
+}
+
+const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
+    red: {
+        textureKey: 'enemy',
+        hp: 1,
+        speedMultiplier: 1.0,
+        sizeMultiplier: 1.0,
+        spawnWeight: 55,
+        tint: null,
+        hitTints: [],
+        deathFlashColor: 0x5f84ff,
+        deathRingColor: 0x658bff,
+        deathBitPalette: ['#5145f1', '#7c33f3', '#6f51f3', '#6d53e4'],
+        deathBurstScale: 1.0,
+        deathDuration: 1.0,
+        deathSpriteColor: 0x9cb5ff
+    },
+    green: {
+        textureKey: 'little-bro',
+        hp: 1,
+        speedMultiplier: 2.4,
+        sizeMultiplier: 0.65,
+        spawnWeight: 10,
+        tint: null,
+        hitTints: [],
+        deathFlashColor: 0x44ff66,
+        deathRingColor: 0x22cc44,
+        deathBitPalette: ['#22ff55', '#44ee44', '#88ff22', '#55dd33'],
+        deathBurstScale: 0.7,
+        deathDuration: 0.7,
+        deathSpriteColor: 0x88ffaa
+    },
+    blue: {
+        textureKey: 'big-bro',
+        hp: 3,
+        speedMultiplier: 0.38,
+        sizeMultiplier: 1.35,
+        spawnWeight: 25,
+        tint: null,
+        // index 0 = 1 hp left (critical), index 1 = 2 hp left (damaged)
+        hitTints: [0xff8899, 0x99ddff],
+        deathFlashColor: 0x44aaff,
+        deathRingColor: 0x2288ee,
+        deathBitPalette: ['#2277ff', '#4499ff', '#66bbff', '#88ccff', '#aaddff'],
+        deathBurstScale: 1.6,
+        deathDuration: 1.5,
+        deathSpriteColor: 0x88ccff
+    },
+    orange: {
+        textureKey: 'orange-enemy',
+        hp: 1,
+        speedMultiplier: 1.3,
+        sizeMultiplier: 0.9,
+        spawnWeight: 10,
+        tint: null,
+        hitTints: [],
+        deathFlashColor: 0xff8800,
+        deathRingColor: 0xdd6600,
+        deathBitPalette: ['#ff8800', '#ffaa22', '#ffcc44', '#dd6600', '#ff5500'],
+        deathBurstScale: 1.2,
+        deathDuration: 1.0,
+        deathSpriteColor: 0xffaa44
+    }
+};
+
+const TOTAL_SPAWN_WEIGHT = Object.values(ENEMY_TYPE_CONFIG)
+    .reduce((sum, cfg) => sum + cfg.spawnWeight, 0);
+
+// ─── Runtime types ────────────────────────────────────────────────────────────
+
 interface EnemyRuntime
 {
     id: string;
+    type: EnemyType;
+    hp: number;
+    maxHp: number;
     sprite: GameObjects.Image;
     velocity: PhaserMath.Vector2;
     speed: number;
@@ -35,10 +127,13 @@ interface EnemyRuntime
     inFirewall: boolean;
     enteredFirewallAtMs: number | null;
     tapRadius: number;
+    frozenUntilMs: number; // game-time ms until which movement is suppressed
 }
 
 const MAX_DELTA_MS = 250;
 const POSITION_SYNC_INTERVAL_MS = 100;
+
+// ─── EnemySystem ──────────────────────────────────────────────────────────────
 
 export class EnemySystem
 {
@@ -59,23 +154,23 @@ export class EnemySystem
     )
     {
         this.options = {
-            maxEnemies: options.maxEnemies ?? 10,
-            minSpawnIntervalMs: options.minSpawnIntervalMs ?? 920,
-            maxSpawnIntervalMs: options.maxSpawnIntervalMs ?? 1580,
-            minSpeed: options.minSpeed ?? 76,
-            maxSpeed: options.maxSpeed ?? 98,
-            spawnMargin: options.spawnMargin ?? 84,
-            turnIntervalMinMs: options.turnIntervalMinMs ?? 260,
-            turnIntervalMaxMs: options.turnIntervalMaxMs ?? 1920,
-            inwardBias: options.inwardBias ?? 0.82,
-            turnResponsiveness: options.turnResponsiveness ?? 7.2,
-            maxDriftFactor: options.maxDriftFactor ?? 3.42,
-            firewallRadius: options.firewallRadius ?? 120,
-            serverHitRadius: options.serverHitRadius ?? 56,
+            maxEnemies:          options.maxEnemies          ?? 10,
+            minSpawnIntervalMs:  options.minSpawnIntervalMs  ?? 920,
+            maxSpawnIntervalMs:  options.maxSpawnIntervalMs  ?? 1580,
+            minSpeed:            options.minSpeed            ?? 76,
+            maxSpeed:            options.maxSpeed            ?? 98,
+            spawnMargin:         options.spawnMargin         ?? 84,
+            turnIntervalMinMs:   options.turnIntervalMinMs   ?? 260,
+            turnIntervalMaxMs:   options.turnIntervalMaxMs   ?? 1920,
+            inwardBias:          options.inwardBias          ?? 0.82,
+            turnResponsiveness:  options.turnResponsiveness  ?? 7.2,
+            maxDriftFactor:      options.maxDriftFactor      ?? 3.42,
+            firewallRadius:      options.firewallRadius      ?? 120,
+            serverHitRadius:     options.serverHitRadius     ?? 56,
             enemyWidthDesktopPx: options.enemyWidthDesktopPx ?? 58,
-            enemyWidthTabletPx: options.enemyWidthTabletPx ?? 50,
-            enemyWidthMobilePx: options.enemyWidthMobilePx ?? 42,
-            onEnemyDestroyed: options.onEnemyDestroyed,
+            enemyWidthTabletPx:  options.enemyWidthTabletPx  ?? 50,
+            enemyWidthMobilePx:  options.enemyWidthMobilePx  ?? 42,
+            onEnemyDestroyed:    options.onEnemyDestroyed,
             onEnemyReachedServer: options.onEnemyReachedServer
         };
 
@@ -139,7 +234,17 @@ export class EnemySystem
             return false;
         }
 
-        this.resolveEnemyDestroyed(selectedEnemy);
+        selectedEnemy.hp -= 1;
+
+        if (selectedEnemy.hp <= 0)
+        {
+            this.resolveEnemyDestroyed(selectedEnemy);
+        }
+        else
+        {
+            this.playHitFlash(selectedEnemy);
+        }
+
         return true;
     }
 
@@ -171,6 +276,8 @@ export class EnemySystem
         this.gameState.clearEnemies();
     }
 
+    // ─── Spawn ────────────────────────────────────────────────────────────────
+
     private tickSpawn (deltaMs: number)
     {
         this.spawnTimerMs -= deltaMs;
@@ -188,12 +295,32 @@ export class EnemySystem
         this.spawnTimerMs = PhaserMath.Between(this.options.minSpawnIntervalMs, this.options.maxSpawnIntervalMs);
     }
 
+    private pickEnemyType (): EnemyType
+    {
+        const roll = PhaserMath.FloatBetween(0, TOTAL_SPAWN_WEIGHT);
+        let cumulative = 0;
+
+        for (const [type, cfg] of Object.entries(ENEMY_TYPE_CONFIG) as [EnemyType, EnemyTypeConfig][])
+        {
+            cumulative += cfg.spawnWeight;
+            if (roll < cumulative)
+            {
+                return type;
+            }
+        }
+
+        return 'red';
+    }
+
     private trySpawnEnemy ()
     {
         if (this.enemies.size >= this.options.maxEnemies)
         {
             return;
         }
+
+        const type = this.pickEnemyType();
+        const typeCfg = ENEMY_TYPE_CONFIG[type];
 
         const id = `enemy-${++this.enemySeq}`;
         const angle = PhaserMath.FloatBetween(0, Math.PI * 2);
@@ -203,17 +330,27 @@ export class EnemySystem
             this.center.y + (Math.sin(angle) * spawnRadius)
         );
 
-        const toCenter = new PhaserMath.Vector2(this.center.x - spawnPosition.x, this.center.y - spawnPosition.y).normalize();
+        const toCenter = new PhaserMath.Vector2(
+            this.center.x - spawnPosition.x,
+            this.center.y - spawnPosition.y
+        ).normalize();
         const driftFactor = PhaserMath.FloatBetween(-this.options.maxDriftFactor, this.options.maxDriftFactor);
         const direction = this.composeDirection(toCenter, driftFactor);
-        const speed = PhaserMath.FloatBetween(this.options.minSpeed, this.options.maxSpeed);
+        const speed = PhaserMath.FloatBetween(this.options.minSpeed, this.options.maxSpeed) * typeCfg.speedMultiplier;
 
-        const sprite = this.scene.add.image(spawnPosition.x, spawnPosition.y, 'enemy')
-            .setDepth(140);
-        this.applyEnemySize(sprite);
+        const sprite = this.scene.add.image(spawnPosition.x, spawnPosition.y, typeCfg.textureKey).setDepth(140);
+        this.applyEnemySize(sprite, type);
+
+        if (typeCfg.tint !== null)
+        {
+            sprite.setTint(typeCfg.tint);
+        }
 
         const runtimeEnemy: EnemyRuntime = {
             id,
+            type,
+            hp: typeCfg.hp,
+            maxHp: typeCfg.hp,
             sprite,
             velocity: direction.scale(speed),
             speed,
@@ -222,13 +359,15 @@ export class EnemySystem
             syncTimerMs: 0,
             inFirewall: false,
             enteredFirewallAtMs: null,
-            tapRadius: this.getEnemyTapRadius(sprite.displayWidth)
+            tapRadius: this.getEnemyTapRadius(sprite.displayWidth),
+            frozenUntilMs: 0
         };
 
         this.enemies.set(id, runtimeEnemy);
 
         const stateEnemy: EnemyState = {
             id,
+            type,
             x: spawnPosition.x,
             y: spawnPosition.y,
             state: 'approaching',
@@ -238,6 +377,8 @@ export class EnemySystem
 
         this.gameState.upsertEnemy(stateEnemy);
     }
+
+    // ─── Movement ─────────────────────────────────────────────────────────────
 
     private tickEnemies (deltaMs: number)
     {
@@ -252,11 +393,20 @@ export class EnemySystem
                 enemy.turnTimerMs = PhaserMath.Between(this.options.turnIntervalMinMs, this.options.turnIntervalMaxMs);
             }
 
-            const toCenter = new PhaserMath.Vector2(this.center.x - enemy.sprite.x, this.center.y - enemy.sprite.y);
+            const toCenter = new PhaserMath.Vector2(
+                this.center.x - enemy.sprite.x,
+                this.center.y - enemy.sprite.y
+            );
             const distanceToCenter = toCenter.length();
+
             if (distanceToCenter <= this.options.serverHitRadius)
             {
                 this.resolveEnemyReachedServer(enemy);
+                continue;
+            }
+
+            if (this.gameState.getElapsedMs() < enemy.frozenUntilMs)
+            {
                 continue;
             }
 
@@ -267,7 +417,9 @@ export class EnemySystem
                 enemy.enteredFirewallAtMs = this.gameState.getElapsedMs();
             }
 
-            const toCenterNormalized = distanceToCenter > 0 ? toCenter.scale(1 / distanceToCenter) : new PhaserMath.Vector2(0, 1);
+            const toCenterNormalized = distanceToCenter > 0
+                ? toCenter.scale(1 / distanceToCenter)
+                : new PhaserMath.Vector2(0, 1);
             const desiredDirection = this.composeDirection(toCenterNormalized, enemy.driftFactor);
             const currentDirection = enemy.velocity.clone().normalize();
             const turnLerp = Math.min(1, this.options.turnResponsiveness * deltaSec);
@@ -291,38 +443,6 @@ export class EnemySystem
         }
     }
 
-    private resolveEnemyDestroyed (enemy: EnemyRuntime)
-    {
-        const { x, y } = enemy.sprite;
-
-        this.gameState.patchEnemy(enemy.id, {
-            x,
-            y,
-            state: 'dead',
-            enteredFirewallAtMs: enemy.enteredFirewallAtMs
-        });
-        this.gameState.removeEnemy(enemy.id);
-        this.enemies.delete(enemy.id);
-        this.playEnemyDeathAnimation(enemy);
-
-        this.options.onEnemyDestroyed?.(enemy.id);
-    }
-
-    private resolveEnemyReachedServer (enemy: EnemyRuntime)
-    {
-        this.gameState.patchEnemy(enemy.id, {
-            x: enemy.sprite.x,
-            y: enemy.sprite.y,
-            state: 'hit_server',
-            enteredFirewallAtMs: enemy.enteredFirewallAtMs
-        });
-        this.gameState.removeEnemy(enemy.id);
-        this.enemies.delete(enemy.id);
-        enemy.sprite.destroy();
-
-        this.options.onEnemyReachedServer?.(enemy.id);
-    }
-
     private composeDirection (toCenter: PhaserMath.Vector2, driftFactor: number)
     {
         const perpendicular = new PhaserMath.Vector2(-toCenter.y, toCenter.x);
@@ -344,10 +464,51 @@ export class EnemySystem
         return desired;
     }
 
-    private applyEnemySize (sprite: GameObjects.Image)
+    // ─── Resolve ──────────────────────────────────────────────────────────────
+
+    private resolveEnemyDestroyed (enemy: EnemyRuntime)
+    {
+        const { x, y } = enemy.sprite;
+
+        this.gameState.patchEnemy(enemy.id, {
+            x,
+            y,
+            state: 'dead',
+            enteredFirewallAtMs: enemy.enteredFirewallAtMs
+        });
+        this.gameState.removeEnemy(enemy.id);
+        this.enemies.delete(enemy.id);
+        this.playEnemyDeathAnimation(enemy);
+
+        if (enemy.type === 'orange')
+        {
+            this.spawnSplitterChildren(enemy);
+        }
+
+        this.options.onEnemyDestroyed?.(enemy.id);
+    }
+
+    private resolveEnemyReachedServer (enemy: EnemyRuntime)
+    {
+        this.gameState.patchEnemy(enemy.id, {
+            x: enemy.sprite.x,
+            y: enemy.sprite.y,
+            state: 'hit_server',
+            enteredFirewallAtMs: enemy.enteredFirewallAtMs
+        });
+        this.gameState.removeEnemy(enemy.id);
+        this.enemies.delete(enemy.id);
+        enemy.sprite.destroy();
+
+        this.options.onEnemyReachedServer?.(enemy.id);
+    }
+
+    // ─── Size helpers ─────────────────────────────────────────────────────────
+
+    private applyEnemySize (sprite: GameObjects.Image, type: EnemyType)
     {
         const baseWidth = Math.max(1, sprite.width);
-        const targetWidth = this.getTargetEnemyWidth();
+        const targetWidth = this.getTargetEnemyWidth() * ENEMY_TYPE_CONFIG[type].sizeMultiplier;
         sprite.setScale(targetWidth / baseWidth);
     }
 
@@ -371,66 +532,172 @@ export class EnemySystem
         return Math.max(14, displayWidth * 0.6); //а это хитбоксы врагов
     }
 
+    // ─── Animations ───────────────────────────────────────────────────────────
+
+    /**
+     * Flash when blue tank takes a hit but survives.
+     * White tint → scale pulse → restore HP-based tint + small chip particles.
+     */
+    private playHitFlash (enemy: EnemyRuntime)
+    {
+        const { sprite } = enemy;
+        if (!sprite.active)
+        {
+            return;
+        }
+
+        const cfg = ENEMY_TYPE_CONFIG[enemy.type];
+        const origScaleX = sprite.scaleX;
+        const origScaleY = sprite.scaleY;
+
+        sprite.setTintFill(0xffffff);
+
+        // Chip particles (small 0/1 bits scattered on hit)
+        const originX = sprite.x;
+        const originY = sprite.y;
+        for (let i = 0; i < 4; i++)
+        {
+            const chipAngle = PhaserMath.FloatBetween(0, Math.PI * 2);
+            const travel = PhaserMath.FloatBetween(18, 40);
+            const glyph = PhaserMath.Between(0, 1) === 0 ? '0' : '1';
+            const color = cfg.deathBitPalette[PhaserMath.Between(0, cfg.deathBitPalette.length - 1)];
+
+            const chip = this.scene.add.text(originX, originY, glyph, {
+                fontFamily: 'Montserrat, Arial, sans-serif',
+                fontSize: `${PhaserMath.Between(9, 15)}px`,
+                fontStyle: '700',
+                color
+            }).setOrigin(0.5).setDepth(sprite.depth + 1).setAlpha(0.9);
+
+            this.scene.tweens.add({
+                targets: chip,
+                x: originX + (Math.cos(chipAngle) * travel),
+                y: originY + (Math.sin(chipAngle) * travel),
+                alpha: 0,
+                scale: 0.5,
+                duration: PhaserMath.Between(180, 310),
+                ease: 'Cubic.easeOut',
+                onComplete: () => { chip.destroy(); }
+            });
+        }
+
+        // Scale punch + tint restore
+        this.scene.tweens.add({
+            targets: sprite,
+            scaleX: origScaleX * 1.22,
+            scaleY: origScaleY * 1.22,
+            duration: 72,
+            ease: 'Sine.easeOut',
+            yoyo: true,
+            onComplete: () =>
+            {
+                if (!sprite.active)
+                {
+                    return;
+                }
+
+                const tintForHp = cfg.hitTints[enemy.hp - 1];
+                if (tintForHp !== undefined)
+                {
+                    sprite.setTint(tintForHp);
+                }
+                else if (cfg.tint !== null)
+                {
+                    sprite.setTint(cfg.tint);
+                }
+                else
+                {
+                    sprite.clearTint();
+                }
+            }
+        });
+    }
+
+    /**
+     * Full death explosion — colours, bit count, ring sizes, durations
+     * all scale with the enemy type config.
+     */
     private playEnemyDeathAnimation (enemy: EnemyRuntime)
     {
         const { sprite } = enemy;
+        const cfg = ENEMY_TYPE_CONFIG[enemy.type];
         const originX = sprite.x;
         const originY = sprite.y;
         const baseScaleX = sprite.scaleX;
         const baseScaleY = sprite.scaleY;
         const baseDepth = sprite.depth;
-        const burstRadius = Math.max(22, sprite.displayWidth);
 
-        const coreFlash = this.scene.add.circle(originX, originY, 9, 0x5f84ff, 0.72).setDepth(baseDepth + 3);
+        const burstRadius = Math.max(22, sprite.displayWidth) * cfg.deathBurstScale;
+        const dur = cfg.deathDuration;
+
+        // Core flash
+        const coreR = Math.max(6, sprite.displayWidth * 0.15);
+        const coreFlash = this.scene.add.circle(originX, originY, coreR, cfg.deathFlashColor, 0.72)
+            .setDepth(baseDepth + 3);
         coreFlash.setBlendMode(Phaser.BlendModes.ADD);
-        const shockRing = this.scene.add.circle(originX, originY, 6).setDepth(baseDepth + 2);
-        shockRing.setStrokeStyle(3, 0x658bff, 0.95);
-
-        this.scene.tweens.add({
-            targets: shockRing,
-            scaleX: 3.2,
-            scaleY: 3.2,
-            alpha: 0,
-            duration: 288,
-            ease: 'Cubic.easeOut',
-            onComplete: () => {
-                shockRing.destroy();
-            }
-        });
 
         this.scene.tweens.add({
             targets: coreFlash,
             scaleX: 4.4,
             scaleY: 4.4,
             alpha: 0,
-            duration: 234,
+            duration: Math.round(234 * Math.max(0.55, dur)),
             ease: 'Expo.easeOut',
-            onComplete: () => {
-                coreFlash.destroy();
-            }
+            onComplete: () => { coreFlash.destroy(); }
         });
 
-        const bitCount = 15;
-        const bitPalette = ['#5145f1', '#7c33f3', '#6f51f3', '#6d53e4'];
+        // Primary shock ring
+        const ringR = Math.max(4, sprite.displayWidth * 0.1);
+        const shockRing = this.scene.add.circle(originX, originY, ringR).setDepth(baseDepth + 2);
+        shockRing.setStrokeStyle(3, cfg.deathRingColor, 0.95);
+
+        this.scene.tweens.add({
+            targets: shockRing,
+            scaleX: 3.2,
+            scaleY: 3.2,
+            alpha: 0,
+            duration: Math.round(288 * Math.max(0.55, dur)),
+            ease: 'Cubic.easeOut',
+            onComplete: () => { shockRing.destroy(); }
+        });
+
+        // Blue tank gets a second, wider and slower shockwave ring
+        if (enemy.type === 'blue')
+        {
+            const outerRing = this.scene.add.circle(originX, originY, ringR * 1.5).setDepth(baseDepth + 1);
+            outerRing.setStrokeStyle(2, cfg.deathRingColor, 0.55);
+
+            this.scene.tweens.add({
+                targets: outerRing,
+                scaleX: 6.0,
+                scaleY: 6.0,
+                alpha: 0,
+                duration: 540,
+                ease: 'Sine.easeOut',
+                delay: 55,
+                onComplete: () => { outerRing.destroy(); }
+            });
+        }
+
+        // Bit burst (0/1 glyphs)
+        const bitCount = enemy.type === 'blue' ? 22 : enemy.type === 'green' ? 10 : 15;
+        const fontSize = enemy.type === 'green'
+            ? { min: 9, max: 16 }
+            : { min: 14, max: 24 };
+
         for (let i = 0; i < bitCount; i++)
         {
-            const angle = PhaserMath.FloatBetween(0, Math.PI * 2);
+            const bitAngle = PhaserMath.FloatBetween(0, Math.PI * 2);
             const travel = PhaserMath.FloatBetween(burstRadius * 0.45, burstRadius * 1.2);
             const glyph = PhaserMath.Between(0, 1) === 0 ? '0' : '1';
-            const color = bitPalette[PhaserMath.Between(0, bitPalette.length - 1)];
-            const endX = originX + (Math.cos(angle) * travel * PhaserMath.FloatBetween(0.95, 1.35));
-            const endY = originY + (Math.sin(angle) * travel * PhaserMath.FloatBetween(0.95, 1.35));
-            const bit = this.scene.add.text(
-                originX,
-                originY,
-                glyph,
-                {
-                    fontFamily: 'Montserrat, Arial, sans-serif',
-                    fontSize: `${PhaserMath.Between(14, 24)}px`,
-                    fontStyle: '700',
-                    color
-                }
-            )
+            const color = cfg.deathBitPalette[PhaserMath.Between(0, cfg.deathBitPalette.length - 1)];
+
+            const bit = this.scene.add.text(originX, originY, glyph, {
+                fontFamily: 'Montserrat, Arial, sans-serif',
+                fontSize: `${PhaserMath.Between(fontSize.min, fontSize.max)}px`,
+                fontStyle: '700',
+                color
+            })
                 .setOrigin(0.5)
                 .setDepth(baseDepth + 1)
                 .setRotation(PhaserMath.FloatBetween(-0.35, 0.35))
@@ -438,21 +705,20 @@ export class EnemySystem
 
             this.scene.tweens.add({
                 targets: bit,
-                x: endX,
-                y: endY,
+                x: originX + (Math.cos(bitAngle) * travel * PhaserMath.FloatBetween(0.95, 1.35)),
+                y: originY + (Math.sin(bitAngle) * travel * PhaserMath.FloatBetween(0.95, 1.35)),
                 alpha: 0,
                 scaleX: PhaserMath.FloatBetween(0.52, 0.88),
                 scaleY: PhaserMath.FloatBetween(0.52, 0.88),
                 angle: PhaserMath.Between(-180, 180),
-                duration: PhaserMath.Between(414, 630),
+                duration: Math.round(PhaserMath.Between(414, 630) * Math.max(0.55, dur)),
                 ease: 'Cubic.easeOut',
-                onComplete: () => {
-                    bit.destroy();
-                }
+                onComplete: () => { bit.destroy(); }
             });
         }
 
-        sprite.setTintFill(0x9cb5ff);
+        // Sprite death tween
+        sprite.setTintFill(cfg.deathSpriteColor);
 
         this.scene.tweens.add({
             targets: sprite,
@@ -461,12 +727,93 @@ export class EnemySystem
             scaleY: baseScaleY * 1.34,
             alpha: 0,
             angle: sprite.angle + PhaserMath.Between(-26, 26),
-            duration: 387,
+            duration: Math.round(387 * Math.max(0.55, dur)),
             ease: 'Sine.easeIn',
-            onComplete: () => {
+            onComplete: () =>
+            {
                 sprite.clearTint();
                 sprite.destroy();
             }
+        });
+    }
+
+    // ─── Splitter ─────────────────────────────────────────────────────────────
+
+    /**
+     * Spawns 2 green children at the orange splitter's death position,
+     * fanning out ±45° from the parent's last movement direction.
+     */
+    private spawnSplitterChildren (parent: EnemyRuntime)
+    {
+        const parentDir = parent.velocity.lengthSq() > 0
+            ? parent.velocity.clone().normalize()
+            : new PhaserMath.Vector2(0, -1);
+
+        for (let i = 0; i < 2; i++)
+        {
+            const sideAngle = (i === 0 ? -1 : 1) * (Math.PI / 4);
+            const cos = Math.cos(sideAngle);
+            const sin = Math.sin(sideAngle);
+            const childDir = new PhaserMath.Vector2(
+                parentDir.x * cos - parentDir.y * sin,
+                parentDir.x * sin + parentDir.y * cos
+            );
+
+            this.spawnEnemyAtPosition('green', parent.sprite.x, parent.sprite.y, childDir, 500);
+        }
+    }
+
+    /**
+     * Spawns an enemy of the given type at an arbitrary world position
+     * with an initial direction vector. Used by the splitter mechanic.
+     */
+    private spawnEnemyAtPosition (type: EnemyType, x: number, y: number, direction: PhaserMath.Vector2, freezeMs = 0)
+    {
+        if (this.enemies.size >= this.options.maxEnemies)
+        {
+            return;
+        }
+
+        const typeCfg = ENEMY_TYPE_CONFIG[type];
+        const id = `enemy-${++this.enemySeq}`;
+        const speed = PhaserMath.FloatBetween(this.options.minSpeed, this.options.maxSpeed) * typeCfg.speedMultiplier;
+        const inFirewall = PhaserMath.Distance.Between(x, y, this.center.x, this.center.y) <= this.options.firewallRadius;
+
+        const sprite = this.scene.add.image(x, y, typeCfg.textureKey).setDepth(140);
+        this.applyEnemySize(sprite, type);
+
+        if (typeCfg.tint !== null)
+        {
+            sprite.setTint(typeCfg.tint);
+        }
+
+        const runtimeEnemy: EnemyRuntime = {
+            id,
+            type,
+            hp: typeCfg.hp,
+            maxHp: typeCfg.hp,
+            sprite,
+            velocity: direction.clone().normalize().scale(speed),
+            speed,
+            driftFactor: PhaserMath.FloatBetween(-this.options.maxDriftFactor, this.options.maxDriftFactor),
+            turnTimerMs: PhaserMath.Between(this.options.turnIntervalMinMs, this.options.turnIntervalMaxMs),
+            syncTimerMs: 0,
+            inFirewall,
+            enteredFirewallAtMs: inFirewall ? this.gameState.getElapsedMs() : null,
+            tapRadius: this.getEnemyTapRadius(sprite.displayWidth),
+            frozenUntilMs: freezeMs > 0 ? this.gameState.getElapsedMs() + freezeMs : 0
+        };
+
+        this.enemies.set(id, runtimeEnemy);
+
+        this.gameState.upsertEnemy({
+            id,
+            type,
+            x,
+            y,
+            state: inFirewall ? 'in_firewall' : 'approaching',
+            spawnedAtMs: this.gameState.getElapsedMs(),
+            enteredFirewallAtMs: runtimeEnemy.enteredFirewallAtMs
         });
     }
 }
