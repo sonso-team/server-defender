@@ -43,6 +43,15 @@ interface EnemyTypeConfig
     deathBurstScale: number;   // explosion size multiplier
     deathDuration: number;     // animation duration multiplier
     deathSpriteColor: number;  // tintFill applied to sprite on death
+    // Trail — dark comet-tail line with 0/1 glyphs along it
+    trailLineColor: number;        // hex colour of the dark background line
+    trailLineWidth: number;        // thickness of the line in px
+    trailGlyphColor: string;       // CSS colour of the 0/1 glyphs
+    trailGlyphFontSize: number;    // px font size of the glyphs
+    trailSampleIntervalMs: number; // ms between position samples
+    trailMaxSamples: number;       // buffer size — controls visual trail length
+    trailGlyphCount: number;       // how many glyphs sit along the trail (= rows × columns)
+    trailRowCount: number;         // 2 or 3 rows of glyphs across the band
 }
 
 const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
@@ -60,7 +69,15 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         deathBitPalette: ['#5145f1', '#7c33f3', '#6f51f3', '#6d53e4'],
         deathBurstScale: 1.0,
         deathDuration: 1.0,
-        deathSpriteColor: 0x9cb5ff
+        deathSpriteColor: 0x9cb5ff,
+        trailLineColor: 0x1a0000,
+        trailLineWidth: 31,
+        trailGlyphColor: '#cc1122',
+        trailGlyphFontSize: 14,
+        trailSampleIntervalMs: 35,
+        trailMaxSamples: 20,
+        trailGlyphCount: 18,
+        trailRowCount: 3
     },
     green: {
         textureKey: 'little-bro',
@@ -76,7 +93,15 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         deathBitPalette: ['#22ff55', '#44ee44', '#88ff22', '#55dd33'],
         deathBurstScale: 0.7,
         deathDuration: 0.7,
-        deathSpriteColor: 0x88ffaa
+        deathSpriteColor: 0x88ffaa,
+        trailLineColor: 0x001400,
+        trailLineWidth: 22,
+        trailGlyphColor: '#22cc44',
+        trailGlyphFontSize: 11,
+        trailSampleIntervalMs: 25,
+        trailMaxSamples: 10,
+        trailGlyphCount: 8,
+        trailRowCount: 2
     },
     blue: {
         textureKey: 'big-bro',
@@ -93,7 +118,15 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         deathBitPalette: ['#2277ff', '#4499ff', '#66bbff', '#88ccff', '#aaddff'],
         deathBurstScale: 1.6,
         deathDuration: 1.5,
-        deathSpriteColor: 0x88ccff
+        deathSpriteColor: 0x88ccff,
+        trailLineColor: 0x000033,
+        trailLineWidth: 62,
+        trailGlyphColor: '#4499ff',
+        trailGlyphFontSize: 17,
+        trailSampleIntervalMs: 45,
+        trailMaxSamples: 43,
+        trailGlyphCount: 21,
+        trailRowCount: 3
     },
     orange: {
         textureKey: 'orange-enemy',
@@ -109,7 +142,15 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         deathBitPalette: ['#ff8800', '#ffaa22', '#ffcc44', '#dd6600', '#ff5500'],
         deathBurstScale: 1.2,
         deathDuration: 1.0,
-        deathSpriteColor: 0xffaa44
+        deathSpriteColor: 0xffaa44,
+        trailLineColor: 0x1a0800,
+        trailLineWidth: 42,
+        trailGlyphColor: '#ff8800',
+        trailGlyphFontSize: 13,
+        trailSampleIntervalMs: 35,
+        trailMaxSamples: 18,
+        trailGlyphCount: 18,
+        trailRowCount: 3
     }
 };
 
@@ -200,7 +241,11 @@ interface EnemyRuntime
     inFirewall: boolean;
     enteredFirewallAtMs: number | null;
     tapRadius: number;
-    frozenUntilMs: number; // game-time ms until which movement is suppressed
+    frozenUntilMs: number;                           // game-time ms until which movement is suppressed
+    trailSampleTimerMs: number;                      // countdown to next position sample
+    trailPositions: { x: number; y: number }[];      // ring buffer of recent world positions
+    trailGraphics: GameObjects.Graphics;             // the dark comet-tail line
+    trailGlyphs: GameObjects.Text[];                 // fixed pool of 0/1 text objects along the trail
 }
 
 const MAX_DELTA_MS = 250;
@@ -344,6 +389,7 @@ export class EnemySystem
     {
         for (const enemy of this.enemies.values())
         {
+            this.destroyTrail(enemy);
             enemy.sprite.destroy();
         }
 
@@ -457,6 +503,8 @@ export class EnemySystem
             sprite.setTint(typeCfg.tint);
         }
 
+        const { trailGraphics, trailGlyphs } = this.createTrailObjects(type, sprite.depth);
+
         const runtimeEnemy: EnemyRuntime = {
             id,
             type,
@@ -471,7 +519,11 @@ export class EnemySystem
             inFirewall: false,
             enteredFirewallAtMs: null,
             tapRadius: this.getEnemyTapRadius(sprite.displayWidth, type),
-            frozenUntilMs: 0
+            frozenUntilMs: 0,
+            trailSampleTimerMs: 0,
+            trailPositions: [],
+            trailGraphics,
+            trailGlyphs
         };
 
         this.enemies.set(id, runtimeEnemy);
@@ -540,6 +592,18 @@ export class EnemySystem
             enemy.sprite.x += enemy.velocity.x * deltaSec;
             enemy.sprite.y += enemy.velocity.y * deltaSec;
 
+            enemy.trailSampleTimerMs -= deltaMs;
+            if (enemy.trailSampleTimerMs <= 0)
+            {
+                enemy.trailSampleTimerMs = ENEMY_TYPE_CONFIG[enemy.type].trailSampleIntervalMs;
+                enemy.trailPositions.unshift({ x: enemy.sprite.x, y: enemy.sprite.y });
+                if (enemy.trailPositions.length > ENEMY_TYPE_CONFIG[enemy.type].trailMaxSamples)
+                {
+                    enemy.trailPositions.pop();
+                }
+            }
+            this.drawTrail(enemy);
+
             enemy.syncTimerMs -= deltaMs;
             if (enemy.syncTimerMs <= 0)
             {
@@ -589,6 +653,7 @@ export class EnemySystem
         });
         this.gameState.removeEnemy(enemy.id);
         this.enemies.delete(enemy.id);
+        this.destroyTrail(enemy);
         this.playEnemyDeathAnimation(enemy);
 
         if (enemy.type === 'orange')
@@ -609,6 +674,7 @@ export class EnemySystem
         });
         this.gameState.removeEnemy(enemy.id);
         this.enemies.delete(enemy.id);
+        this.destroyTrail(enemy);
         enemy.sprite.destroy();
 
         this.options.onEnemyReachedServer?.(enemy.id);
@@ -636,6 +702,98 @@ export class EnemySystem
         }
 
         return this.options.enemyWidthDesktopPx;
+    }
+
+    private createTrailObjects (type: EnemyType, spriteDepth: number)
+    {
+        const cfg = ENEMY_TYPE_CONFIG[type];
+        const trailGraphics = this.scene.add.graphics().setDepth(spriteDepth - 2);
+        const trailGlyphs: GameObjects.Text[] = [];
+
+        for (let i = 0; i < cfg.trailGlyphCount; i++)
+        {
+            trailGlyphs.push(
+                this.scene.add.text(0, 0, i % 2 === 0 ? '0' : '1', {
+                    fontFamily: 'Courier New, monospace',
+                    fontSize: `${cfg.trailGlyphFontSize}px`,
+                    fontStyle: 'bold',
+                    color: cfg.trailGlyphColor
+                }).setOrigin(0.5).setDepth(spriteDepth - 1).setVisible(false)
+            );
+        }
+
+        return { trailGraphics, trailGlyphs };
+    }
+
+    private drawTrail (enemy: EnemyRuntime)
+    {
+        const cfg = ENEMY_TYPE_CONFIG[enemy.type];
+        const pts = enemy.trailPositions;
+
+        enemy.trailGraphics.clear();
+
+        if (pts.length < 2)
+        {
+            enemy.trailGlyphs.forEach(g => g.setVisible(false));
+            return;
+        }
+
+        // Dark background band — alpha fades head→tail
+        for (let i = 1; i < pts.length; i++)
+        {
+            const alpha = (i / pts.length) * 0.92;
+            enemy.trailGraphics.lineStyle(cfg.trailLineWidth, cfg.trailLineColor, alpha);
+            enemy.trailGraphics.beginPath();
+            enemy.trailGraphics.moveTo(pts[i - 1].x, pts[i - 1].y);
+            enemy.trailGraphics.lineTo(pts[i].x, pts[i].y);
+            enemy.trailGraphics.strokePath();
+        }
+
+        // Perpendicular axis (right-hand normal of velocity)
+        const vLen = enemy.velocity.length();
+        const perpX = vLen > 0.1 ? -enemy.velocity.y / vLen : 0;
+        const perpY = vLen > 0.1 ?  enemy.velocity.x / vLen : 1;
+
+        // 3 rows offset along the perpendicular: top / centre / bottom
+        const rowSpacing = cfg.trailGlyphFontSize * 1.15;
+        const half = (cfg.trailRowCount - 1) / 2;
+        const rowOffsets = Array.from({ length: cfg.trailRowCount }, (_, r) => (r - half) * rowSpacing);
+
+        // glyphs[gi]: row = gi % rowCount, column = floor(gi / rowCount)
+        const cols = Math.floor(cfg.trailGlyphCount / cfg.trailRowCount);
+        const step = Math.max(1, Math.floor(pts.length / cols));
+
+        for (let gi = 0; gi < enemy.trailGlyphs.length; gi++)
+        {
+            const row = gi % cfg.trailRowCount;
+            const col = Math.floor(gi / cfg.trailRowCount);
+            const posIdx = (col + 1) * step;
+            const glyph = enemy.trailGlyphs[gi];
+
+            if (posIdx < pts.length)
+            {
+                const pos = pts[posIdx];
+                const alpha = (1 - posIdx / pts.length) * 0.9;
+                if (Math.random() < 0.18) { glyph.setText(Math.random() < 0.5 ? '0' : '1'); }
+                glyph
+                    .setPosition(
+                        pos.x + perpX * rowOffsets[row],
+                        pos.y + perpY * rowOffsets[row]
+                    )
+                    .setAlpha(alpha)
+                    .setVisible(true);
+            }
+            else
+            {
+                glyph.setVisible(false);
+            }
+        }
+    }
+
+    private destroyTrail (enemy: EnemyRuntime)
+    {
+        enemy.trailGraphics.destroy();
+        enemy.trailGlyphs.forEach(g => g.destroy());
     }
 
     private getEnemyTapRadius (displayWidth: number, type: EnemyType)
@@ -912,7 +1070,10 @@ export class EnemySystem
             inFirewall,
             enteredFirewallAtMs: inFirewall ? this.gameState.getElapsedMs() : null,
             tapRadius: this.getEnemyTapRadius(sprite.displayWidth, type),
-            frozenUntilMs: freezeMs > 0 ? this.gameState.getElapsedMs() + freezeMs : 0
+            frozenUntilMs: freezeMs > 0 ? this.gameState.getElapsedMs() + freezeMs : 0,
+            trailSampleTimerMs: 0,
+            trailPositions: [],
+            ...this.createTrailObjects(type, sprite.depth)
         };
 
         this.enemies.set(id, runtimeEnemy);
