@@ -8,8 +8,11 @@ export class Game extends Scene
 {
     camera: Phaser.Cameras.Scene2D.Camera;
     backgroundEffect!: Background;
-    hudText: Phaser.GameObjects.Text;
-    livesText: Phaser.GameObjects.Text;
+    private scoreText!: Phaser.GameObjects.Text;
+    private timerText!: Phaser.GameObjects.Text;
+    private heartImages: Phaser.GameObjects.Image[] = [];
+    private readonly heartSize = 30;
+    private readonly heartGap = 5;
     private gameState!: GameState;
     private enemySystem!: EnemySystem;
     private unsubscribeState?: () => void;
@@ -32,7 +35,7 @@ export class Game extends Scene
 
     private updateLayout (width = this.scale.width, height = this.scale.height)
     {
-        if (!this.backgroundEffect || !this.enemySystem || !this.centerMarker || !this.serverSprite || !this.hudText || !this.livesText)
+        if (!this.backgroundEffect || !this.enemySystem || !this.centerMarker || !this.serverSprite || !this.scoreText || !this.timerText || this.heartImages.length === 0)
         {
             return;
         }
@@ -48,9 +51,13 @@ export class Game extends Scene
         this.serverSprite.setPosition(centerX, centerY);
         this.applyServerSpriteScale(markerRadius);
         this.enemySystem.setServerHitRadius(this.getServerHitRadius());
-        this.hudText.setPosition(20, 16);
-        this.hudText.setWordWrapWidth(Math.max((width * 0.62) - 24, 220), true);
-        this.livesText.setPosition(width - 20, 16);
+        this.scoreText.setPosition(centerX, height / 2);
+        this.timerText.setPosition(16, 16);
+        const totalHeartsWidth = this.maxLives * this.heartSize + (this.maxLives - 1) * this.heartGap;
+        const heartsStartX = width - 16 - totalHeartsWidth;
+        this.heartImages.forEach((img, i) => {
+            img.setPosition(heartsStartX + i * (this.heartSize + this.heartGap) + this.heartSize / 2, 20 + this.heartSize / 2);
+        });
     }
 
     create ()
@@ -71,26 +78,37 @@ export class Game extends Scene
         this.serverSprite = this.add.image(centerX, this.scale.height / 2, 'server').setDepth(160);
         this.applyServerSpriteScale(markerRadius);
 
-        this.hudText = this.add.text(20, 16, '', {
+        this.scoreText = this.add.text(centerX, this.scale.height / 4, '', {
             fontFamily: 'Montserrat, Arial, sans-serif',
-            fontSize: 24,
+            fontSize: 28,
             fontStyle: '700',
             color: '#ffffff',
             stroke: '#000000',
-            strokeThickness: 5,
+            strokeThickness: 3,
+            align: 'center'
+        }).setOrigin(0.5, 0).setDepth(200);
+
+        this.timerText = this.add.text(16, 16, '', {
+            fontFamily: 'Montserrat, Arial, sans-serif',
+            fontSize: 17,
+            fontStyle: '600',
+            color: '#c8d8ff',
+            stroke: '#000000',
+            strokeThickness: 2,
             align: 'left'
         }).setOrigin(0, 0).setDepth(200);
-        this.hudText.setWordWrapWidth(Math.max((width * 0.62) - 24, 220), true);
 
-        this.livesText = this.add.text(width - 20, 16, '', {
-            fontFamily: 'Montserrat, Arial, sans-serif',
-            fontSize: 30,
-            fontStyle: '700',
-            color: '#ff5f86',
-            stroke: '#000000',
-            strokeThickness: 5,
-            align: 'right'
-        }).setOrigin(1, 0).setDepth(200);
+        const totalHeartsWidth = this.maxLives * this.heartSize + (this.maxLives - 1) * this.heartGap;
+        const heartsStartX = width - 16 - totalHeartsWidth;
+        for (let i = 0; i < this.maxLives; i++)
+        {
+            const img = this.add.image(
+                heartsStartX + i * (this.heartSize + this.heartGap) + this.heartSize / 2,
+                20 + this.heartSize / 2,
+                'heart'
+            ).setDisplaySize(this.heartSize, this.heartSize).setDepth(200);
+            this.heartImages.push(img);
+        }
 
         this.unsubscribeState = this.gameState.subscribe((snapshot) => {
             this.renderHud(snapshot);
@@ -145,8 +163,10 @@ export class Game extends Scene
         this.enemySystem?.destroy();
         this.serverSprite?.destroy();
         this.centerMarker?.destroy();
-        this.livesText?.destroy();
-        this.hudText?.destroy();
+        this.heartImages.forEach(img => img.destroy());
+        this.heartImages = [];
+        this.scoreText?.destroy();
+        this.timerText?.destroy();
         this.isGameOverTransitioning = false;
         this.gameState?.setPhase('paused');
         this.backgroundEffect?.destroy();
@@ -155,11 +175,11 @@ export class Game extends Scene
     private renderHud (snapshot: GameStateSnapshot)
     {
         const seconds = (snapshot.elapsedMs / 1000).toFixed(1);
-        const fullHearts = '❤'.repeat(snapshot.lives);
-        const emptyHearts = '♡'.repeat(Math.max(0, this.maxLives - snapshot.lives));
-        this.hudText.setText(`Score: ${snapshot.score}\nTime: ${seconds}s`);
-        this.livesText.setText(`${fullHearts}${emptyHearts}`);
-        this.livesText.setColor(snapshot.lives <= 1 ? '#ff355e' : '#ff5f86');
+        this.scoreText.setText(`${snapshot.score} очк.`);
+        this.timerText.setText(`Время: ${seconds}s`);
+        this.heartImages.forEach((img, i) => {
+            img.setTexture(i < snapshot.lives ? 'heart' : 'heart-broken');
+        });
     }
 
     private drawCenterMarker (centerX: number, centerY: number, radius: number)
