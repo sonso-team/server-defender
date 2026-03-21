@@ -56,7 +56,6 @@ export class VaporwaveGridBackground
         this.graphics.fillRect(0, 0, this.width, this.height);
 
         this.graphics.fillStyle(this.glowColor, 0.14);
-        this.graphics.fillRect(0, horizonY - (this.height * 0.018), this.width, this.height * 0.036);
 
         this.graphics.lineStyle(1.3, this.gridColor, 0.4);
         this.graphics.lineBetween(halfWidth, 0, halfWidth, this.height);
@@ -74,9 +73,9 @@ export class VaporwaveGridBackground
             const x = mirror
                 ? anchorX + (span * normalized)
                 : anchorX - (span * normalized);
-            const alpha = 0.14 + ((1 - normalized) * 0.26);
+            // const alpha = 0.14 + ((1 - normalized) * 0.26);
 
-            this.graphics.lineStyle(1.3, this.gridColor, alpha);
+            // this.graphics.lineStyle(1.3, this.gridColor, alpha);
             this.graphics.lineBetween(anchorX, this.height * 0.5, x, this.height);
             this.graphics.lineBetween(anchorX, this.height * 0.5, x, 0);
         }
