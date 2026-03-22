@@ -2,7 +2,7 @@ import { Scene } from 'phaser';
 import type { GameStateSnapshot } from '../core/GameState';
 
 const HEART_SIZE = 30;
-const HEART_GAP  = 5;
+const HEART_GAP  = 3;
 
 export class GameHud
 {

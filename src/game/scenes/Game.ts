@@ -36,7 +36,50 @@ export class Game extends Scene
         super('Game');
     }
 
+    private static readonly REQUIRED_TEXTURES = [
+        'game-bg', 'server', 'enemy',
+        'little-bro', 'big-bro', 'orange-enemy',
+        'heart', 'heart-broken',
+    ] as const;
+
     create ()
+    {
+        const missing = Game.REQUIRED_TEXTURES.filter(key => !this.textures.exists(key));
+
+        if (missing.length > 0)
+        {
+            this.loadMissingTextures(missing);
+            this.load.once(Phaser.Loader.Events.COMPLETE, () => this.initScene());
+            this.load.start();
+        }
+        else
+        {
+            this.initScene();
+        }
+    }
+
+    private loadMissingTextures (missing: readonly string[])
+    {
+        this.load.setPath('assets');
+
+        const loaders: Record<string, () => void> = {
+            'game-bg':       () => this.load.image('game-bg',     'background/background.png'),
+            'server':        () => this.load.svg('server',        'characters/server-chan.svg',  { width: 256, height: 256 }),
+            'enemy':         () => this.load.image('enemy',       'characters/virus-kun.png'),
+            'little-bro':    () => this.load.svg('little-bro',   'characters/little-bro.svg',   { width: 128, height: 128 }),
+            'big-bro':       () => this.load.svg('big-bro',      'characters/big-bro.svg',      { width: 128, height: 128 }),
+            'orange-enemy':  () => this.load.svg('orange-enemy', 'characters/orange.svg',       { width: 128, height: 128 }),
+            'heart':         () => this.load.svg('heart',        'heart.svg',                   { width: 64,  height: 64  }),
+            'heart-broken':  () => this.load.svg('heart-broken', 'heart-broken.svg',            { width: 64,  height: 64  }),
+        };
+
+        for (const key of missing)
+        {
+            loaders[key]?.();
+        }
+    }
+
+    private initScene ()
     {
         const { width, height } = this.scale;
         const centerX      = width / 2;

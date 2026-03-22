@@ -47,7 +47,7 @@ export class Preloader extends Scene
         this.load.setPath('assets');
 
         this.load.image('game-bg',     'background/background.png');
-        this.load.image('server',      'characters/server-chan.png');
+        this.load.svg('server',        'characters/server-chan.svg',  { width: 256, height: 256 });
         this.load.image('enemy',       'characters/virus-kun.png');
         this.load.svg('little-bro',   'characters/little-bro.svg',  { width: 128, height: 128 });
         this.load.svg('big-bro',      'characters/big-bro.svg',     { width: 128, height: 128 });
