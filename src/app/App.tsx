@@ -60,7 +60,7 @@ export function App ()
                 <GameOverScreen
                     bottomText="Узнавай первым о новых продуктах и мероприятиях DDoS-Guard. Подписывайся на наши соцсети."
                     canRestart={true}
-                    description="Тут типо какой-то текст который через пропсы прокидывается создателем лобби типа адуреть ты крутой перец выиграй пачку кириешек с диким огурцом"
+                    description="Спасибо за игру! Результаты розыгрыша появятся в течении нескольких часов"
                     onRestart={handleRestart}
                     scoreCaption="Итоговый счёт"
                     scoreValue={gameOverData.score}
