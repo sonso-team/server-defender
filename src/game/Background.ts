@@ -5,6 +5,8 @@ interface Star {
     ny: number;
     size: number;
     phase: number;
+    speed: number;
+    drift: number;  // horizontal drift per unit of vertical progress (-1..1)
 }
 
 export class Background
@@ -13,6 +15,7 @@ export class Background
     private width: number;
     private height: number;
     private travelOffset = 0;
+    private starOffset = 0;
 
     private readonly backgroundColor = 0x0f092b;
     private readonly gridColor = 0xa7a7bb;
@@ -30,9 +33,11 @@ export class Background
             const rng = this.seededRng(i * 7919 + 31337);
             return {
                 nx:    rng(),
-                ny:    rng() * 0.46,
+                ny:    rng(),
                 size:  0.6 + rng() * 1.4,
-                phase: rng() * Math.PI * 2
+                phase: rng() * Math.PI * 2,
+                speed: 0.4 + rng() * 0.9,
+                drift: (rng() - 0.5) * 0.6
             };
         });
 
@@ -49,6 +54,7 @@ export class Background
     update (delta: number)
     {
         this.travelOffset = (this.travelOffset + (delta * 0.00018)) % 1;
+        this.starOffset = (this.starOffset + delta * 0.000055) % 1;
         this.draw();
     }
 
@@ -109,23 +115,34 @@ export class Background
         this.graphics.lineStyle(1.3, this.gridColor, 0.4);
         this.graphics.lineBetween(halfWidth, 0, halfWidth, this.height);
 
-        this.drawStars(horizonY);
+        this.drawStars(horizonY, this.height);
         this.drawPerspectiveFan(leftAnchorX, leftSpan, laneCount);
         this.drawPerspectiveFan(rightAnchorX, rightSpan, laneCount, true);
         this.drawRows(leftAnchorX, rightAnchorX, leftSpan, rightSpan, rowCount, floorHeight, ceilingHeight, horizonY);
         this.drawHorizonGlow(horizonY);
     }
 
-    private drawStars (horizonY: number)
+    private drawStars (horizonY: number, totalHeight: number)
     {
         const t = this.travelOffset * Math.PI * 2;
         for (const star of this.stars)
         {
-            const x = star.nx * this.width;
-            const y = star.ny * horizonY;
-            const alpha = 0.35 + Math.sin(t * 0.7 + star.phase) * 0.28;
+            const progress = (star.ny + this.starOffset * star.speed) % 1;
+            const twinkle = 0.35 + Math.sin(t * 0.7 + star.phase) * 0.22;
+            const alpha = twinkle * (1 - progress * 0.75);
+            // horizontal drift accumulates as star travels
+            const xBase = (star.nx * this.width + progress * star.drift * this.width) % this.width;
+            const x = xBase < 0 ? xBase + this.width : xBase;
+
+            // Upper half: fall from top down toward horizon
+            const yu = progress * horizonY;
             this.graphics.fillStyle(0xddeeff, alpha);
-            this.graphics.fillCircle(x, y, star.size);
+            this.graphics.fillCircle(x, yu, star.size);
+
+            // Lower half: mirror — fall from bottom up toward horizon
+            const yl = totalHeight - progress * (totalHeight - horizonY);
+            this.graphics.fillStyle(0xddeeff, alpha);
+            this.graphics.fillCircle(x, yl, star.size);
         }
     }
 
