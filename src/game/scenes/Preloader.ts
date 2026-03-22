@@ -63,6 +63,7 @@ export class Preloader extends Scene
     {
         this.load.setPath('assets');
 
+        this.load.image('game-bg', 'background/background.png');
         this.load.image('server', 'characters/server-chan.png');
         this.load.image('enemy', 'characters/virus-kun.png');
         this.load.image('dragon', 'characters/virus-kun.png');

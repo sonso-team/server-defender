@@ -24,6 +24,7 @@ export class Game extends Scene
     private scoreMultiplier = 1;
     private maxLives = 3;
     private isGameOverTransitioning = false;
+    private bgImage!: Phaser.GameObjects.Image;
     private firewallAngle = 0;
     private serverBaseScale = 1;
     private readonly handlePointerDown = (pointer: Phaser.Input.Pointer) => {
@@ -49,6 +50,7 @@ export class Game extends Scene
         const centerY = height / 2;
         const markerRadius = this.getCenterMarkerRadius(width);
 
+        this.bgImage.setPosition(centerX, centerY).setDisplaySize(width, height);
         this.backgroundEffect.resize(width, height);
         this.enemySystem.resize(width, height);
         this.enemySystem.setFirewallRadius(markerRadius);
@@ -73,6 +75,10 @@ export class Game extends Scene
 
         this.camera = this.cameras.main;
         this.camera.setBackgroundColor(0x0f092b);
+
+        this.bgImage = this.add.image(width / 2, this.scale.height / 2, 'game-bg')
+            .setDepth(-1001)
+            .setDisplaySize(width, this.scale.height);
 
         this.gameState = new GameState({ initialLives: 3, initialPhase: 'running' });
         this.maxLives = this.gameState.getMaxLives();
