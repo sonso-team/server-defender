@@ -53,31 +53,3 @@ npm run preview      # превью собранной версии
 npm run typecheck    # проверка типов без сборки
 npm run lint         # ESLint
 ```
-
-## Docker
-
-```dockerfile
-FROM node:22-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-```
-
-Если деплоится вместе с admin-панелью, добавьте в nginx:
-
-```nginx
-location / {
-    root /usr/share/nginx/html/game;
-    try_files $uri $uri/ /index.html;
-}
-
-location /admin/ {
-    proxy_pass http://admin-panel:3000/;
-}
-```
