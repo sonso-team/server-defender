@@ -24,6 +24,8 @@ export class Game extends Scene
     private scoreMultiplier = 1;
     private maxLives = 3;
     private isGameOverTransitioning = false;
+    private firewallAngle = 0;
+    private serverBaseScale = 1;
     private readonly handlePointerDown = (pointer: Phaser.Input.Pointer) => {
         this.enemySystem.tryHitEnemy(pointer.worldX, pointer.worldY);
     };
@@ -54,7 +56,7 @@ export class Game extends Scene
         this.serverSprite.setPosition(centerX, centerY);
         this.applyServerSpriteScale(markerRadius);
         this.enemySystem.setServerHitRadius(this.getServerHitRadius());
-        this.scoreText.setPosition(centerX, height / 2);
+        this.scoreText.setPosition(centerX, height / 2 - markerRadius - 70);
         this.timerText.setPosition(16, 16);
         const totalHeartsWidth = this.maxLives * this.heartSize + (this.maxLives - 1) * this.heartGap;
         const heartsStartX = width - 16 - totalHeartsWidth;
@@ -81,7 +83,7 @@ export class Game extends Scene
         this.serverSprite = this.add.image(centerX, this.scale.height / 2, 'server').setDepth(160);
         this.applyServerSpriteScale(markerRadius);
 
-        this.scoreText = this.add.text(centerX, this.scale.height / 4, '', {
+        this.scoreText = this.add.text(centerX, this.scale.height / 2 - markerRadius - 70, '', {
             fontFamily: 'Montserrat, Arial, sans-serif',
             fontSize: 28,
             fontStyle: '700',
@@ -121,10 +123,12 @@ export class Game extends Scene
         this.enemySystem = new EnemySystem(this, this.gameState, {
             firewallRadius: markerRadius,
             serverHitRadius,
-            onEnemyHit: (type) => {
+            onEnemyHit: (type, x, y) => {
                 this.gameState.addScore(this.HIT_SCORES[type] * this.scoreMultiplier);
+                this.flashFirewallAt(x, y);
             },
             onEnemyReachedServer: () => {
+                this.flashServerHit();
                 const livesLeft = this.gameState.damageServer(1);
                 if (livesLeft <= 0)
                 {
@@ -152,6 +156,14 @@ export class Game extends Scene
         this.gameState.advanceTime(delta);
         this.enemySystem.update(delta);
         this.tickMultiplier();
+
+        this.firewallAngle = (this.firewallAngle + delta * 0.000186) % (Math.PI * 2);
+        const cx = this.scale.width / 2;
+        const cy = this.scale.height / 2;
+        this.drawCenterMarker(cx, cy, this.getCenterMarkerRadius(this.scale.width), this.firewallAngle);
+
+        const pulse = 1 + Math.sin(this.time.now * 0.0011) * 0.045;
+        this.serverSprite.setScale(this.serverBaseScale * pulse);
     }
 
     private tickMultiplier ()
@@ -233,7 +245,7 @@ export class Game extends Scene
         });
     }
 
-    private drawCenterMarker (centerX: number, centerY: number, radius: number)
+    private drawCenterMarker (centerX: number, centerY: number, radius: number, rotationOffset = 0)
     {
         const dashCount = 32;
         const gapFraction = 0.45;
@@ -248,13 +260,52 @@ export class Game extends Scene
 
         for (let i = 0; i < dashCount; i++)
         {
-            const startAngle = i * arcStep;
+            const startAngle = i * arcStep + rotationOffset;
             const endAngle = startAngle + dashArcLength;
 
             this.centerMarker.beginPath();
             this.centerMarker.arc(centerX, centerY, radius, startAngle, endAngle, false);
             this.centerMarker.strokePath();
         }
+    }
+
+    private flashFirewallAt (x: number, y: number)
+    {
+        const centerX = this.scale.width / 2;
+        const centerY = this.scale.height / 2;
+        const angle = Math.atan2(y - centerY, x - centerX);
+        const radius = this.getCenterMarkerRadius(this.scale.width);
+
+        const flash = this.add.graphics().setDepth(131);
+        flash.lineStyle(6, 0xffffff, 0.9);
+        flash.beginPath();
+        flash.arc(centerX, centerY, radius, angle - 0.28, angle + 0.28, false);
+        flash.strokePath();
+
+        this.tweens.add({
+            targets: flash,
+            alpha: 0,
+            duration: 350,
+            ease: 'Cubic.easeOut',
+            onComplete: () => { flash.destroy(); }
+        });
+    }
+
+    private flashServerHit ()
+    {
+        const s = this.serverSprite;
+        const overlay = this.add.image(s.x, s.y, 'server')
+            .setScale(s.scaleX, s.scaleY)
+            .setDepth(s.depth + 1)
+            .setTintFill(0xaa0000)
+            .setAlpha(0.5);
+        this.tweens.add({
+            targets: overlay,
+            alpha: 0,
+            duration: 2000,
+            ease: 'Cubic.easeOut',
+            onComplete: () => { overlay.destroy(); }
+        });
     }
 
     private getCenterMarkerRadius (viewportWidth: number)
@@ -283,6 +334,7 @@ export class Game extends Scene
         const targetWidth = markerDiameter * 0.3;
 
         this.serverSprite.setScale(targetWidth / baseWidth);
+        this.serverBaseScale = this.serverSprite.scaleX;
     }
 
     private getServerHitRadius ()

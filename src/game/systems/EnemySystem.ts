@@ -19,7 +19,7 @@ interface EnemySystemOptions
     enemyWidthDesktopPx?: number;
     enemyWidthTabletPx?: number;
     enemyWidthMobilePx?: number;
-    onEnemyHit?: (type: EnemyType) => void;
+    onEnemyHit?: (type: EnemyType, x: number, y: number) => void;
     onEnemyDestroyed?: (enemyId: string) => void;
     onEnemyReachedServer?: (enemyId: string) => void;
 }
@@ -71,8 +71,8 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         trailGlyphColor: '#cc1122',
         trailGlyphFontSize: 14,
         trailSampleDistPx: 5,
-        trailMaxSamples: 20,
-        trailGlyphCount: 18,
+        trailMaxSamples: 11,
+        trailGlyphCount: 9,
         trailRowCount: 3
     },
     green: {
@@ -95,8 +95,8 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         trailGlyphColor: '#22cc44',
         trailGlyphFontSize: 11,
         trailSampleDistPx: 4,
-        trailMaxSamples: 10,
-        trailGlyphCount: 8,
+        trailMaxSamples: 8,
+        trailGlyphCount: 4,
         trailRowCount: 2
     },
     blue: {
@@ -115,12 +115,12 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         deathDuration: 1.5,
         deathSpriteColor: 0x88ccff,
         trailLineColor: 0x000033,
-        trailLineWidth: 62,
+        trailLineWidth: 30,
         trailGlyphColor: '#4499ff',
         trailGlyphFontSize: 17,
         trailSampleDistPx: 5,
-        trailMaxSamples: 43,
-        trailGlyphCount: 21,
+        trailMaxSamples: 14,
+        trailGlyphCount: 12,
         trailRowCount: 3
     },
     orange: {
@@ -143,8 +143,8 @@ const ENEMY_TYPE_CONFIG: Record<EnemyType, EnemyTypeConfig> = {
         trailGlyphColor: '#ff8800',
         trailGlyphFontSize: 13,
         trailSampleDistPx: 5,
-        trailMaxSamples: 18,
-        trailGlyphCount: 18,
+        trailMaxSamples: 8,
+        trailGlyphCount: 6,
         trailRowCount: 3
     }
 };
@@ -343,7 +343,7 @@ export class EnemySystem
         }
 
         selectedEnemy.hp -= 1;
-        this.options.onEnemyHit?.(selectedEnemy.type);
+        this.options.onEnemyHit?.(selectedEnemy.type, selectedEnemy.sprite.x, selectedEnemy.sprite.y);
 
         if (selectedEnemy.hp <= 0)
         {
@@ -400,9 +400,9 @@ export class EnemySystem
 
     private getViewportSpeedScale (): number
     {
-        const referenceDiag = 860;
-        const currentDiag = Math.hypot(this.width, this.height);
-        return Math.max(1, Math.pow(currentDiag / referenceDiag, 0.8));
+        const referenceSpawnRadius = 511;
+        const currentSpawnRadius = Math.hypot(this.width, this.height) / 2 + this.options.spawnMargin;
+        return Math.max(1, currentSpawnRadius / referenceSpawnRadius);
     }
 
     private getGlobalSpeedMultiplier (type: EnemyType): number
@@ -685,7 +685,7 @@ export class EnemySystem
                 ? this.options.enemyWidthTabletPx
                 : this.options.enemyWidthDesktopPx;
 
-        return base * this.getViewportSpeedScale();
+        return base;
     }
 
     private createTrailObjects (type: EnemyType, spriteDepth: number)
@@ -724,7 +724,7 @@ export class EnemySystem
 
         for (let i = 1; i < pts.length; i++)
         {
-            const alpha = (i / pts.length) * 0.92;
+            const alpha = (1 - i / pts.length) * 0.92;
             enemy.trailGraphics.lineStyle(cfg.trailLineWidth, cfg.trailLineColor, alpha);
             enemy.trailGraphics.beginPath();
             enemy.trailGraphics.moveTo(pts[i - 1].x, pts[i - 1].y);
